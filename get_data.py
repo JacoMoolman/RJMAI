@@ -20,7 +20,7 @@ def get_timeframe_interval(timeframe: str) -> str:
     else:
         raise ValueError(f"Unsupported timeframe: {timeframe}")
 
-def get_forex_data(symbol: str, timeframe: str = "M5", num_bars: int = 1) -> Dict[str, Any]:
+def get_forex_data(symbol: str, timeframe: str = "M5", num_bars: int = 1, start_date: datetime = None) -> Dict[str, Any]:
     """
     Fetch forex data for a given currency pair using yfinance with specified timeframe
     
@@ -28,6 +28,7 @@ def get_forex_data(symbol: str, timeframe: str = "M5", num_bars: int = 1) -> Dic
         symbol (str): The forex pair symbol (e.g., 'EURUSD')
         timeframe (str): Timeframe for the data (e.g., 'M5', 'M15', 'H1', 'D1')
         num_bars (int): Number of previous bars to fetch
+        start_date (datetime, optional): Custom start date. If None, uses current time
         
     Returns:
         Dict containing the forex data including multiple bars of price data
@@ -43,9 +44,22 @@ def get_forex_data(symbol: str, timeframe: str = "M5", num_bars: int = 1) -> Dic
         # Convert timeframe to yfinance interval
         interval = get_timeframe_interval(timeframe)
         
-        # Get data for specified number of bars
+        # Calculate the end date (which will be our start_date or current time)
+        end_date = start_date if start_date else datetime.now()
+        
+        # Calculate start period based on num_bars and timeframe
+        if timeframe.startswith('M'):
+            minutes = int(timeframe[1:]) * (num_bars + 1)  # Add 1 for safe buffer
+            start_period = end_date - timedelta(minutes=minutes)
+        elif timeframe.startswith('H'):
+            hours = int(timeframe[1:]) * (num_bars + 1)
+            start_period = end_date - timedelta(hours=hours)
+        else:  # Daily
+            start_period = end_date - timedelta(days=(num_bars + 1))
+            
+        # Get data for specified period
         ticker = yf.Ticker(ticker_symbol)
-        hist = ticker.history(period="1d", interval=interval)
+        hist = ticker.history(start=start_period, end=end_date, interval=interval)
         
         if hist.empty:
             return {"error": "No data available for the specified symbol"}
