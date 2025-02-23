@@ -1,6 +1,6 @@
 # Configuration
 NUM_BARS = 5  # Number of previous bars to fetch
-CUSTOM_DATE = "2025-02-14 15:30:00"  # Format: YYYY-MM-DD HH:MM:SS
+CUSTOM_DATE = "2024-02-14 15:30:00"  # Format: YYYY-MM-DD HH:MM:SS
 
 from get_data import get_forex_data
 import pandas as pd
