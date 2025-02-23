@@ -41,7 +41,7 @@ class ForexDataCache:
         if os.path.exists(csv_path):
             try:
                 df = pd.read_csv(csv_path, index_col=0, parse_dates=True)
-                df.index = pd.to_datetime(df.index)
+                df.index = pd.to_datetime(df.index, utc=True)  # Ensure UTC timezone
                 self.data_cache[cache_key] = df
                 return True
             except Exception as e:
@@ -52,7 +52,15 @@ class ForexDataCache:
         cache_key = self._get_cache_key(symbol, timeframe)
         if cache_key in self.data_cache:
             csv_path = self._get_csv_path(symbol, timeframe)
-            self.data_cache[cache_key].to_csv(csv_path)
+            # Format the index dates and decimal numbers before saving
+            df = self.data_cache[cache_key].copy()
+            # Drop unwanted columns
+            columns_to_drop = ['Volume', 'Dividends', 'Stock Splits']
+            df = df.drop(columns=[col for col in columns_to_drop if col in df.columns])
+            df.index = df.index.strftime('%Y.%m.%d %H:%M')
+            # Round all numeric columns to 5 decimal places
+            df = df.round(5)
+            df.to_csv(csv_path, float_format='%.5f')
     
     def get_data(self, symbol: str, timeframe: str, num_bars: int, start_date: datetime) -> pd.DataFrame:
         cache_key = self._get_cache_key(symbol, timeframe)
@@ -81,6 +89,10 @@ class ForexDataCache:
             required_start = end_date - timedelta(days=days)
         else:
             raise ValueError(f"Unsupported timeframe format: {timeframe}")
+            
+        # Ensure required_start is timezone-aware
+        if not required_start.tzinfo:
+            required_start = pytz.UTC.localize(required_start)
         
         # Check if we need to fetch new data
         need_update = True
