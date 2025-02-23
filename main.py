@@ -1,14 +1,14 @@
 # Configuration
 NUM_BARS = 5  # Number of previous bars to fetch
-CUSTOM_DATE = "2025-02-21 12:12:00"  # Format: YYYY-MM-DD HH:MM:SS
+CUSTOM_DATE = "2024-02-01 12:12:00"  # Format: YYYY-MM-DD HH:MM:SS
 
 # List of forex pairs to analyze
 FOREX_PAIRS = [
     "EURUSD",  # Euro/US Dollar
-    "GBPUSD",  # British Pound/US Dollar
-    "USDJPY",  # US Dollar/Japanese Yen
-    "USDCHF",  # US Dollar/Swiss Franc
-    "AUDUSD"   # Australian Dollar/US Dollar
+    # "GBPUSD",  # British Pound/US Dollar
+    # "USDJPY",  # US Dollar/Japanese Yen
+    # "USDCHF",  # US Dollar/Swiss Franc
+    # "AUDUSD"   # Australian Dollar/US Dollar
 ]
 
 # List of timeframes to analyze (using Yahoo Finance valid intervals)
@@ -16,8 +16,8 @@ TIMEFRAMES = [
     "5m",    # 5 minutes
     "15m",   # 15 minutes
     "30m",   # 30 minutes
-    "1h",    # 1 hour
-    "1d"     # Daily
+    # "1h",    # 1 hour
+    # "1d"     # Daily
 ]
 
 from get_data import get_forex_data
