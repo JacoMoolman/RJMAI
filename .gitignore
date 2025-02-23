@@ -37,6 +37,9 @@ ENV/
 # Environment variables
 .env
 
+# Project specific
+CSVDUMP/
+
 # Operating System
 .DS_Store
 Thumbs.db
