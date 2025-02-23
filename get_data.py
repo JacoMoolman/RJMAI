@@ -69,14 +69,18 @@ class ForexDataCache:
         if not end_date.tzinfo:
             end_date = pytz.UTC.localize(end_date)
         
-        if timeframe.startswith('M'):
-            minutes = int(timeframe[1:]) * (num_bars + 1)
+        # Parse the timeframe value and unit
+        if timeframe.endswith('m'):  # Minutes
+            minutes = int(timeframe[:-1]) * num_bars
             required_start = end_date - timedelta(minutes=minutes)
-        elif timeframe.startswith('H'):
-            hours = int(timeframe[1:]) * (num_bars + 1)
+        elif timeframe.endswith('h'):  # Hours
+            hours = int(timeframe[:-1]) * num_bars
             required_start = end_date - timedelta(hours=hours)
-        else:  # Daily
-            required_start = end_date - timedelta(days=(num_bars + 1))
+        elif timeframe.endswith('d'):  # Days
+            days = int(timeframe[:-1]) * num_bars
+            required_start = end_date - timedelta(days=days)
+        else:
+            raise ValueError(f"Unsupported timeframe format: {timeframe}")
         
         # Check if we need to fetch new data
         need_update = True
@@ -109,15 +113,9 @@ class ForexDataCache:
 
 def get_timeframe_interval(timeframe: str) -> str:
     """Convert timeframe to yfinance interval format"""
-    timeframe = timeframe.upper()
-    if timeframe.startswith('M'):
-        return f"{timeframe[1:]}m"  # M5 -> 5m
-    elif timeframe.startswith('H'):
-        return f"{timeframe[1:]}h"  # H1 -> 1h
-    elif timeframe == 'D1':
-        return '1d'
-    else:
-        raise ValueError(f"Unsupported timeframe: {timeframe}")
+    # Yahoo Finance valid intervals: '1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo'
+    timeframe = timeframe.lower()  # Convert to lowercase to match Yahoo Finance format
+    return timeframe  # No conversion needed as we're now using Yahoo Finance format directly
 
 def get_forex_data(symbol: str, timeframe: str = "M5", num_bars: int = 1, start_date: datetime = None) -> Dict[str, Any]:
     """
