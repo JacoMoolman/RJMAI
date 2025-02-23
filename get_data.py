@@ -34,13 +34,14 @@ class ForexDataCache:
             timeframe = f"{timeframe[1:]}m"
         return os.path.join(self.csv_dir, f"{symbol}_{timeframe}.csv")
     
-    def load_from_csv(self, symbol: str, timeframe: str):
+    def load_from_csv(self, symbol: str, timeframe: str) -> bool:
+        """Load data from CSV file into cache"""
         cache_key = self._get_cache_key(symbol, timeframe)
         csv_path = self._get_csv_path(symbol, timeframe)
-        
         if os.path.exists(csv_path):
             try:
-                df = pd.read_csv(csv_path, index_col=0, parse_dates=True)
+                # Read CSV without index column name
+                df = pd.read_csv(csv_path, index_col=0, parse_dates=True, header=0)
                 df.index = pd.to_datetime(df.index, utc=True)  # Ensure UTC timezone
                 self.data_cache[cache_key] = df
                 return True
@@ -49,18 +50,20 @@ class ForexDataCache:
         return False
     
     def save_to_csv(self, symbol: str, timeframe: str):
+        """Save data from cache to CSV file"""
         cache_key = self._get_cache_key(symbol, timeframe)
         if cache_key in self.data_cache:
             csv_path = self._get_csv_path(symbol, timeframe)
             # Format the index dates and decimal numbers before saving
             df = self.data_cache[cache_key].copy()
             # Drop unwanted columns
-            columns_to_drop = ['Volume', 'Dividends', 'Stock Splits']
+            columns_to_drop = ['Volume', 'Dividends', 'Stock Splits', 'Adj Close']
             df = df.drop(columns=[col for col in columns_to_drop if col in df.columns])
             df.index = df.index.strftime('%Y.%m.%d %H:%M')
             # Round all numeric columns to 5 decimal places
             df = df.round(5)
-            df.to_csv(csv_path, float_format='%.5f')
+            # Save with 'Date' as the index name
+            df.to_csv(csv_path, float_format='%.5f', index_label='Date')
     
     def get_data(self, symbol: str, timeframe: str, num_bars: int, start_date: datetime) -> pd.DataFrame:
         cache_key = self._get_cache_key(symbol, timeframe)
@@ -99,24 +102,58 @@ class ForexDataCache:
         if cached_data is not None:
             cached_range = cached_data[required_start:end_date]
             if len(cached_range) >= num_bars:
-                need_update = False
+                # Make sure we have all the required bars with data
+                last_n_bars = cached_range.tail(num_bars)
+                if not last_n_bars.empty and not last_n_bars.isnull().values.any():
+                    need_update = False
+                    print(f"Using cached data for {symbol} {timeframe}")
         
         # Fetch new data if needed
         if need_update:
+            print(f"Fetching {symbol} {timeframe} data from yfinance...")
             ticker_symbol = f"{symbol[:3]}{symbol[3:]}=X"
             interval = get_timeframe_interval(timeframe)
             
             ticker = yf.Ticker(ticker_symbol)
-            new_data = ticker.history(start=required_start, end=end_date, interval=interval)
+            
+            # For daily data, we need to fetch more data to ensure we get enough valid bars
+            if timeframe.lower() == '1d':
+                # Fetch more days to account for market holidays/weekends
+                fetch_start = required_start - timedelta(days=num_bars * 3)
+                new_data = ticker.history(start=fetch_start, end=end_date, interval=interval)
+            else:
+                new_data = ticker.history(start=required_start, end=end_date, interval=interval)
+            
+            # Ensure we have a DatetimeIndex
+            if not isinstance(new_data.index, pd.DatetimeIndex):
+                new_data.index = pd.to_datetime(new_data.index)
             
             if cached_data is not None:
-                # Merge new data with cached data
-                combined_data = pd.concat([cached_data, new_data])
-                # Remove duplicates and sort
-                combined_data = combined_data[~combined_data.index.duplicated(keep='last')]
-                combined_data.sort_index(inplace=True)
+                # Ensure cached data has DatetimeIndex
+                if not isinstance(cached_data.index, pd.DatetimeIndex):
+                    cached_data.index = pd.to_datetime(cached_data.index)
+                
+                # Only concatenate non-empty DataFrames
+                dfs_to_concat = []
+                if not cached_data.empty:
+                    dfs_to_concat.append(cached_data)
+                if not new_data.empty:
+                    dfs_to_concat.append(new_data)
+                
+                if len(dfs_to_concat) > 0:
+                    combined_data = pd.concat(dfs_to_concat).fillna(0)
+                    # Remove duplicates and sort
+                    combined_data = combined_data[~combined_data.index.duplicated(keep='last')]
+                    combined_data.sort_index(inplace=True)
+                else:
+                    # Create empty DataFrame with proper structure
+                    combined_data = pd.DataFrame(columns=new_data.columns, index=pd.DatetimeIndex([])).fillna(0)
             else:
-                combined_data = new_data
+                combined_data = new_data.fillna(0)
+            
+            # For daily data, make sure we have business days only
+            if timeframe.lower() == '1d':
+                combined_data = combined_data.asfreq('B', method='ffill')  # Business days only, forward fill missing values
             
             self.data_cache[cache_key] = combined_data
             self.save_to_csv(symbol, timeframe)
@@ -127,7 +164,15 @@ def get_timeframe_interval(timeframe: str) -> str:
     """Convert timeframe to yfinance interval format"""
     # Yahoo Finance valid intervals: '1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo'
     timeframe = timeframe.lower()  # Convert to lowercase to match Yahoo Finance format
-    return timeframe  # No conversion needed as we're now using Yahoo Finance format directly
+    
+    # Handle special cases
+    if timeframe == '1d':
+        # For daily data, we need to adjust the period and interval
+        return '1d'
+    elif timeframe == '1h':
+        return '60m'
+    
+    return timeframe
 
 def get_forex_data(symbol: str, timeframe: str = "M5", num_bars: int = 1, start_date: datetime = None) -> Dict[str, Any]:
     """
@@ -158,13 +203,31 @@ def get_forex_data(symbol: str, timeframe: str = "M5", num_bars: int = 1, start_
         if len(last_n_bars) < num_bars:
             return {"error": f"Only {len(last_n_bars)} bars available"}
         
-        result = {
-            "From": symbol[:3],
-            "To": symbol[3:],
-            "Timeframe": timeframe,
-            "StartTime": last_n_bars.index[0].strftime("%Y-%m-%d %H:%M"),
-            "EndTime": last_n_bars.index[-1].strftime("%Y-%m-%d %H:%M"),
-        }
+        # Convert index to datetime and format based on timeframe
+        try:
+            # Convert index to list of datetime objects first
+            start_time = last_n_bars.index[0]
+            end_time = last_n_bars.index[-1]
+            
+            # Force conversion to string first, then to datetime
+            start_time_str = str(start_time)
+            end_time_str = str(end_time)
+            
+            start_dt = pd.to_datetime(start_time_str)
+            end_dt = pd.to_datetime(end_time_str)
+            
+            # Use different format for daily timeframe
+            date_format = "%Y-%m-%d" if timeframe.lower() == '1d' else "%Y-%m-%d %H:%M"
+            
+            result = {
+                "From": symbol[:3],
+                "To": symbol[3:],
+                "Timeframe": timeframe,
+                "StartTime": start_dt.strftime(date_format),
+                "EndTime": end_dt.strftime(date_format),
+            }
+        except Exception as e:
+            return {"error": f"Error formatting dates: {str(e)}"}
         
         # Add numbered price data
         for i, (idx, row) in enumerate(last_n_bars.iterrows(), 1):

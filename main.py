@@ -1,14 +1,14 @@
 # Configuration
 NUM_BARS = 5  # Number of previous bars to fetch
-CUSTOM_DATE = "2024-02-01 12:12:00"  # Format: YYYY-MM-DD HH:MM:SS
+CUSTOM_DATE = "2025-02-21 12:12:00"  # Format: YYYY-MM-DD HH:MM:SS
 
 # List of forex pairs to analyze
 FOREX_PAIRS = [
     "EURUSD",  # Euro/US Dollar
-    # "GBPUSD",  # British Pound/US Dollar
-    # "USDJPY",  # US Dollar/Japanese Yen
-    # "USDCHF",  # US Dollar/Swiss Franc
-    # "AUDUSD"   # Australian Dollar/US Dollar
+    "GBPUSD",  # British Pound/US Dollar
+    "USDJPY",  # US Dollar/Japanese Yen
+    "USDCHF",  # US Dollar/Swiss Franc
+    "AUDUSD"   # Australian Dollar/US Dollar
 ]
 
 # List of timeframes to analyze (using Yahoo Finance valid intervals)
@@ -16,8 +16,8 @@ TIMEFRAMES = [
     "5m",    # 5 minutes
     "15m",   # 15 minutes
     "30m",   # 30 minutes
-    # "1h",    # 1 hour
-    # "1d"     # Daily
+    "1h",    # 1 hour
+    "1d"     # Daily
 ]
 
 from get_data import get_forex_data
@@ -56,28 +56,30 @@ def main():
             all_data[forex_pair][timeframe] = data
             print(f"Time Range: {data['StartTime']} to {data['EndTime']}")
     
-    # Now process each currency pair and timeframe separately
+    # Now process each currency pair and combine all timeframes
     dataframes = {}
     for forex_pair in FOREX_PAIRS:
-        dataframes[forex_pair] = {}
+        # Create a dictionary to store all data for this currency pair
+        df_data = {}
+        
+        # Process each timeframe
         for timeframe in TIMEFRAMES:
             if timeframe not in all_data[forex_pair]:
                 continue
                 
             data = all_data[forex_pair][timeframe]
-            df_data = {}
             for i in range(1, NUM_BARS + 1):
                 df_data[f"Open_{timeframe}_{i}"] = [data[f"Open{i}"]]
                 df_data[f"High_{timeframe}_{i}"] = [data[f"High{i}"]]
                 df_data[f"Low_{timeframe}_{i}"] = [data[f"Low{i}"]]
                 df_data[f"Close_{timeframe}_{i}"] = [data[f"Close{i}"]]
-            
-            # Store the DataFrame in our dictionary
-            dataframes[forex_pair][timeframe] = pd.DataFrame(df_data)
-            
-            print(f"\n{forex_pair} {timeframe} Data:")
-            print("-" * 40)
-            display_forex_data(dataframes[forex_pair][timeframe])
+        
+        # Create a single DataFrame for this currency pair with all timeframes
+        dataframes[forex_pair] = pd.DataFrame(df_data)
+        
+        print(f"\n{forex_pair} Combined Timeframe Data:")
+        print("-" * 40)
+        display_forex_data(dataframes[forex_pair])
 
 if __name__ == "__main__":
     main()
