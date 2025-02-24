@@ -203,38 +203,25 @@ def get_forex_data(symbol: str, timeframe: str = "M5", num_bars: int = 1, start_
         if len(last_n_bars) < num_bars:
             return {"error": f"Only {len(last_n_bars)} bars available"}
         
-        # Convert index to datetime and format based on timeframe
-        try:
-            # Convert index to list of datetime objects first
-            start_time = last_n_bars.index[0]
-            end_time = last_n_bars.index[-1]
-            
-            # Force conversion to string first, then to datetime
-            start_time_str = str(start_time)
-            end_time_str = str(end_time)
-            
-            start_dt = pd.to_datetime(start_time_str)
-            end_dt = pd.to_datetime(end_time_str)
-            
-            # Use different format for daily timeframe
-            date_format = "%Y-%m-%d" if timeframe.lower() == '1d' else "%Y-%m-%d %H:%M"
-            
-            result = {
-                "From": symbol[:3],
-                "To": symbol[3:],
-                "Timeframe": timeframe,
-                "StartTime": start_dt.strftime(date_format),
-                "EndTime": end_dt.strftime(date_format),
-            }
-        except Exception as e:
-            return {"error": f"Error formatting dates: {str(e)}"}
+        result = {
+            "From": symbol[:3],
+            "To": symbol[3:],
+            "Timeframe": timeframe,
+        }
         
-        # Add numbered price data
+        # Add numbered price data with timestamps
         for i, (idx, row) in enumerate(last_n_bars.iterrows(), 1):
+            # Get the actual timestamp from the data
+            bar_time = idx.strftime("%Y-%m-%d %H:%M")
+            result[f"Time{i}"] = bar_time
             result[f"Open{i}"] = row['Open']
             result[f"High{i}"] = row['High']
             result[f"Low{i}"] = row['Low']
             result[f"Close{i}"] = row['Close']
+        
+        # Set start and end times from the actual data
+        result["StartTime"] = result[f"Time{num_bars}"]  # Oldest bar
+        result["EndTime"] = result["Time1"]  # Newest bar
         
         return result
         

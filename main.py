@@ -1,6 +1,6 @@
 # Configuration
 NUM_BARS = 5  # Number of previous bars to fetch
-CUSTOM_DATE = "2025-02-21 12:12:00"  # Format: YYYY-MM-DD HH:MM:SS
+CUSTOM_DATE = "2025-02-21 12:30:00"  # Format: YYYY-MM-DD HH:MM:SS
 
 # List of forex pairs to analyze
 FOREX_PAIRS = [
@@ -22,14 +22,18 @@ TIMEFRAMES = [
 
 from get_data import get_forex_data
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 import pytz
 
 def display_forex_data(df):
-    """Display forex data in a vertical format"""
+    """Display forex data in a vertical format with timestamps"""
     for column in df.columns:
-        print(f"{column}: {df[column].values[0]:.6f}")
+        if not column.startswith('timestamp_'):  # Skip the timestamp columns
+            timeframe = column.split('_')[1]  # Extract timeframe from column name
+            bar_num = column.split('_')[2]    # Extract bar number
+            timestamp = df[f'timestamp_{timeframe}_{bar_num}'].values[0]
+            print(f"{timestamp}::{column}: {df[column].values[0]:.6f}")
 
 def main():
     try:
@@ -68,7 +72,10 @@ def main():
                 continue
                 
             data = all_data[forex_pair][timeframe]
+            
             for i in range(1, NUM_BARS + 1):
+                # Use the actual timestamp from the data
+                df_data[f'timestamp_{timeframe}_{i}'] = [data[f'Time{i}']]
                 df_data[f"Open_{timeframe}_{i}"] = [data[f"Open{i}"]]
                 df_data[f"High_{timeframe}_{i}"] = [data[f"High{i}"]]
                 df_data[f"Low_{timeframe}_{i}"] = [data[f"Low{i}"]]
