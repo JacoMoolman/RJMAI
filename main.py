@@ -1,6 +1,6 @@
 # Configuration
 NUM_BARS = 5  # Number of previous bars to fetch
-CUSTOM_DATE = "2025-02-21 12:30:00"  # Format: YYYY-MM-DD HH:MM:SS
+CUSTOM_DATE = "2025-02-20 10:30:00"  # Format: YYYY-MM-DD HH:MM:SS
 
 # List of forex pairs to analyze
 FOREX_PAIRS = [

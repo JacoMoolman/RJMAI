@@ -1,3 +1,26 @@
+"""
+Data Management Process:
+1. On initialization:
+   - Clear any existing cache from memory
+   - Load ALL CSV files into memory cache
+   - CSV files are sorted by date/time to ensure proper ordering
+
+2. When requesting data:
+   - Check if requested date range exists in memory cache
+   - If data exists in cache and covers the time range, use it
+   - If not, fetch from yfinance, then:
+     a) Merge with existing data
+     b) Sort by date/time
+     c) Update both memory cache and CSV file
+     d) Return requested range
+
+This ensures we always:
+- Start fresh with each run
+- Have all CSV data loaded
+- Keep CSV files sorted and up to date
+- Only fetch from yfinance when absolutely necessary
+"""
+
 import yfinance as yf
 import logging
 from typing import Dict, Any
@@ -19,19 +42,22 @@ class ForexDataCache:
         return cls._instance
     
     def _initialize(self):
-        self.data_cache = {}
+        """Initialize cache and load all CSV files"""
+        self.data_cache = {}  # Clear any existing cache
         self.csv_dir = "CSVDUMP"
         os.makedirs(self.csv_dir, exist_ok=True)
+        
+        # Load all CSV files into cache
+        if os.path.exists(self.csv_dir):
+            for file in os.listdir(self.csv_dir):
+                if file.endswith('.csv'):
+                    symbol, timeframe = file[:-4].split('_')
+                    self.load_from_csv(symbol, timeframe)
     
     def _get_cache_key(self, symbol: str, timeframe: str) -> str:
         return f"{symbol}_{timeframe}"
     
     def _get_csv_path(self, symbol: str, timeframe: str) -> str:
-        # Convert timeframe format to match existing files (H1 -> 1h)
-        if timeframe.startswith('H'):
-            timeframe = f"{timeframe[1:]}h"
-        elif timeframe.startswith('M'):
-            timeframe = f"{timeframe[1:]}m"
         return os.path.join(self.csv_dir, f"{symbol}_{timeframe}.csv")
     
     def load_from_csv(self, symbol: str, timeframe: str) -> bool:
@@ -40,9 +66,13 @@ class ForexDataCache:
         csv_path = self._get_csv_path(symbol, timeframe)
         if os.path.exists(csv_path):
             try:
-                # Read CSV without index column name
-                df = pd.read_csv(csv_path, index_col=0, parse_dates=True, header=0)
-                df.index = pd.to_datetime(df.index, utc=True)  # Ensure UTC timezone
+                # Read CSV and parse dates in the exact format from the file
+                df = pd.read_csv(csv_path)
+                # Convert the date string to datetime
+                df['Date'] = pd.to_datetime(df['Date'], format='%Y.%m.%d %H:%M')
+                df.set_index('Date', inplace=True)
+                df.index = df.index.tz_localize('UTC')
+                df = df.sort_index()
                 self.data_cache[cache_key] = df
                 return True
             except Exception as e:
@@ -50,115 +80,93 @@ class ForexDataCache:
         return False
     
     def save_to_csv(self, symbol: str, timeframe: str):
-        """Save data from cache to CSV file"""
+        """Save data from cache to CSV file, ensuring it's sorted by date"""
         cache_key = self._get_cache_key(symbol, timeframe)
         if cache_key in self.data_cache:
             csv_path = self._get_csv_path(symbol, timeframe)
-            # Format the index dates and decimal numbers before saving
             df = self.data_cache[cache_key].copy()
-            # Drop unwanted columns
+            
+            # Drop unwanted columns from yfinance
             columns_to_drop = ['Volume', 'Dividends', 'Stock Splits', 'Adj Close']
             df = df.drop(columns=[col for col in columns_to_drop if col in df.columns])
+            
+            # Sort by date and format the index
+            df = df.sort_index()
             df.index = df.index.strftime('%Y.%m.%d %H:%M')
+            
             # Round all numeric columns to 5 decimal places
             df = df.round(5)
+            
             # Save with 'Date' as the index name
             df.to_csv(csv_path, float_format='%.5f', index_label='Date')
     
-    def get_data(self, symbol: str, timeframe: str, num_bars: int, start_date: datetime) -> pd.DataFrame:
+    def get_data(self, symbol: str, timeframe: str, num_bars: int, start_date: datetime = None) -> pd.DataFrame:
+        """Get data from cache or fetch from yfinance"""
         cache_key = self._get_cache_key(symbol, timeframe)
         
-        # Load from CSV if not in memory
-        if cache_key not in self.data_cache:
-            self.load_from_csv(symbol, timeframe)
+        if start_date is None:
+            start_date = datetime.now(pytz.UTC)
+        elif not start_date.tzinfo:
+            start_date = pytz.UTC.localize(start_date)
         
-        # Get cached data
-        cached_data = self.data_cache.get(cache_key)
+        # Calculate how far back we need data
+        if timeframe.lower().endswith('m'):
+            delta = timedelta(minutes=int(timeframe[:-1]) * num_bars)
+        elif timeframe.lower().endswith('h'):
+            delta = timedelta(hours=int(timeframe[:-1]) * num_bars)
+        else:  # daily
+            delta = timedelta(days=num_bars)
         
-        # Calculate the required date range
-        end_date = start_date if start_date else datetime.now(pytz.UTC)
-        if not end_date.tzinfo:
-            end_date = pytz.UTC.localize(end_date)
+        required_start = start_date - delta
         
-        # Parse the timeframe value and unit
-        if timeframe.endswith('m'):  # Minutes
-            minutes = int(timeframe[:-1]) * num_bars
-            required_start = end_date - timedelta(minutes=minutes)
-        elif timeframe.endswith('h'):  # Hours
-            hours = int(timeframe[:-1]) * num_bars
-            required_start = end_date - timedelta(hours=hours)
-        elif timeframe.endswith('d'):  # Days
-            days = int(timeframe[:-1]) * num_bars
-            required_start = end_date - timedelta(days=days)
-        else:
-            raise ValueError(f"Unsupported timeframe format: {timeframe}")
-            
-        # Ensure required_start is timezone-aware
-        if not required_start.tzinfo:
-            required_start = pytz.UTC.localize(required_start)
+        # Check if we have valid data in cache
+        if cache_key in self.data_cache:
+            data = self.data_cache[cache_key]
+            if not data.empty:
+                # Get the data up to our end time
+                data_at_time = data[data.index <= start_date]
+                if not data_at_time.empty:
+                    latest_time = data_at_time.index.max()
+                    earliest_needed = start_date - delta
+                    
+                    # Check if we have enough data in our range
+                    data_in_range = data_at_time[data_at_time.index >= earliest_needed]
+                    if len(data_in_range) >= num_bars:
+                        print(f"Using cached data for {symbol} {timeframe}")
+                        return data_in_range.tail(num_bars)
         
-        # Check if we need to fetch new data
-        need_update = True
-        if cached_data is not None:
-            cached_range = cached_data[required_start:end_date]
-            if len(cached_range) >= num_bars:
-                # Make sure we have all the required bars with data
-                last_n_bars = cached_range.tail(num_bars)
-                if not last_n_bars.empty and not last_n_bars.isnull().values.any():
-                    need_update = False
-                    print(f"Using cached data for {symbol} {timeframe}")
+        # If we get here, we need new data
+        print(f"Fetching {symbol} {timeframe} data from yfinance...")
+        yf_interval = get_timeframe_interval(timeframe)
+        ticker = yf.Ticker(f"{symbol}=X")
         
-        # Fetch new data if needed
-        if need_update:
-            print(f"Fetching {symbol} {timeframe} data from yfinance...")
-            ticker_symbol = f"{symbol[:3]}{symbol[3:]}=X"
-            interval = get_timeframe_interval(timeframe)
-            
-            ticker = yf.Ticker(ticker_symbol)
-            
-            # For daily data, we need to fetch more data to ensure we get enough valid bars
-            if timeframe.lower() == '1d':
-                # Fetch more days to account for market holidays/weekends
-                fetch_start = required_start - timedelta(days=num_bars * 3)
-                new_data = ticker.history(start=fetch_start, end=end_date, interval=interval)
-            else:
-                new_data = ticker.history(start=required_start, end=end_date, interval=interval)
-            
-            # Ensure we have a DatetimeIndex
-            if not isinstance(new_data.index, pd.DatetimeIndex):
-                new_data.index = pd.to_datetime(new_data.index)
-            
-            if cached_data is not None:
-                # Ensure cached data has DatetimeIndex
-                if not isinstance(cached_data.index, pd.DatetimeIndex):
-                    cached_data.index = pd.to_datetime(cached_data.index)
+        # Add buffer to ensure we get enough data
+        buffer_multiplier = 3
+        fetch_start = start_date - (delta * buffer_multiplier)
+        
+        try:
+            hist = ticker.history(interval=yf_interval, start=fetch_start, end=start_date)
+            if not hist.empty:
+                # Convert timezone to UTC if needed
+                if hist.index.tz is None:
+                    hist.index = pd.to_datetime(hist.index).tz_localize('UTC')
+                elif hist.index.tz != pytz.UTC:
+                    hist.index = hist.index.tz_convert('UTC')
                 
-                # Only concatenate non-empty DataFrames
-                dfs_to_concat = []
-                if not cached_data.empty:
-                    dfs_to_concat.append(cached_data)
-                if not new_data.empty:
-                    dfs_to_concat.append(new_data)
+                # Merge with existing data if we have any
+                if cache_key in self.data_cache and not self.data_cache[cache_key].empty:
+                    hist = pd.concat([self.data_cache[cache_key], hist])
+                    hist = hist[~hist.index.duplicated(keep='last')]  # Remove duplicates
+                    hist = hist.sort_index()  # Sort by date
                 
-                if len(dfs_to_concat) > 0:
-                    combined_data = pd.concat(dfs_to_concat).fillna(0)
-                    # Remove duplicates and sort
-                    combined_data = combined_data[~combined_data.index.duplicated(keep='last')]
-                    combined_data.sort_index(inplace=True)
-                else:
-                    # Create empty DataFrame with proper structure
-                    combined_data = pd.DataFrame(columns=new_data.columns, index=pd.DatetimeIndex([])).fillna(0)
+                self.data_cache[cache_key] = hist
+                self.save_to_csv(symbol, timeframe)  # Save to cache for future use
+                return hist[hist.index <= start_date].tail(num_bars)
             else:
-                combined_data = new_data.fillna(0)
-            
-            # For daily data, make sure we have business days only
-            if timeframe.lower() == '1d':
-                combined_data = combined_data.asfreq('B', method='ffill')  # Business days only, forward fill missing values
-            
-            self.data_cache[cache_key] = combined_data
-            self.save_to_csv(symbol, timeframe)
-            
-        return self.data_cache[cache_key]
+                return pd.DataFrame()  # Return empty DataFrame if no data
+        except Exception as e:
+            logging.error(f"Error fetching data: {e}")
+            return pd.DataFrame()
 
 def get_timeframe_interval(timeframe: str) -> str:
     """Convert timeframe to yfinance interval format"""
@@ -211,8 +219,13 @@ def get_forex_data(symbol: str, timeframe: str = "M5", num_bars: int = 1, start_
         
         # Add numbered price data with timestamps
         for i, (idx, row) in enumerate(last_n_bars.iterrows(), 1):
-            # Get the actual timestamp from the data
-            bar_time = idx.strftime("%Y-%m-%d %H:%M")
+            # Convert index to datetime if it's not already
+            if isinstance(idx, pd.Timestamp):
+                bar_time = idx.strftime("%Y-%m-%d %H:%M")
+            else:
+                # Handle string or other index types
+                bar_time = pd.to_datetime(str(idx)).strftime("%Y-%m-%d %H:%M")
+            
             result[f"Time{i}"] = bar_time
             result[f"Open{i}"] = row['Open']
             result[f"High{i}"] = row['High']
