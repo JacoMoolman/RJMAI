@@ -1,6 +1,6 @@
 # Configuration
 NUM_BARS = 5  # Number of previous bars to fetch
-CUSTOM_DATE = "2025-02-20 10:30:00"  # Format: YYYY-MM-DD HH:MM:SS
+CUSTOM_DATE = "2025-02-20 12:30:00"  # Format: YYYY-MM-DD HH:MM:SS
 
 # List of forex pairs to analyze
 FOREX_PAIRS = [
@@ -48,21 +48,27 @@ def main():
     # First, load all data into memory
     all_data = {}
     for forex_pair in FOREX_PAIRS:
+        print("############################################################################")
         all_data[forex_pair] = {}
         for timeframe in TIMEFRAMES:
-            print(f"\nFetching last {NUM_BARS} {timeframe} bars for {forex_pair}...")
             data = get_forex_data(forex_pair, timeframe, NUM_BARS, start_date)
             
-            if "error" in data:
-                print(f"Error for {forex_pair} {timeframe}: {data['error']}")
+            if len(data["data"]) == 0:
+                print(f"Error for {forex_pair} {timeframe}: No data available")
                 continue
                 
             all_data[forex_pair][timeframe] = data
-            print(f"Time Range: {data['StartTime']} to {data['EndTime']}")
+            
+            # Display the first and last bar times
+            if data["data"]:
+                start_time = data["data"][0]["time"]
+                end_time = data["data"][-1]["time"]
+                print(f"Data range: {start_time} to {end_time}")
     
     # Now process each currency pair and combine all timeframes
     dataframes = {}
     for forex_pair in FOREX_PAIRS:
+        print(f"Processing {forex_pair}")
         # Create a dictionary to store all data for this currency pair
         df_data = {}
         
@@ -75,11 +81,11 @@ def main():
             
             for i in range(1, NUM_BARS + 1):
                 # Use the actual timestamp from the data
-                df_data[f'timestamp_{timeframe}_{i}'] = [data[f'Time{i}']]
-                df_data[f"Open_{timeframe}_{i}"] = [data[f"Open{i}"]]
-                df_data[f"High_{timeframe}_{i}"] = [data[f"High{i}"]]
-                df_data[f"Low_{timeframe}_{i}"] = [data[f"Low{i}"]]
-                df_data[f"Close_{timeframe}_{i}"] = [data[f"Close{i}"]]
+                df_data[f'timestamp_{timeframe}_{i}'] = [data["data"][i-1]["time"]]
+                df_data[f"Open_{timeframe}_{i}"] = [data["data"][i-1]["open"]]
+                df_data[f"High_{timeframe}_{i}"] = [data["data"][i-1]["high"]]
+                df_data[f"Low_{timeframe}_{i}"] = [data["data"][i-1]["low"]]
+                df_data[f"Close_{timeframe}_{i}"] = [data["data"][i-1]["close"]]
         
         # Create a single DataFrame for this currency pair with all timeframes
         dataframes[forex_pair] = pd.DataFrame(df_data)

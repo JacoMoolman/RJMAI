@@ -28,6 +28,11 @@ from datetime import datetime, timedelta
 import pandas as pd
 import pytz
 import os
+import colorama
+from colorama import Fore, Style
+
+# Initialize colorama
+colorama.init(autoreset=True)
 
 # Suppress yfinance warnings
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
@@ -44,39 +49,73 @@ class ForexDataCache:
     def _initialize(self):
         """Initialize cache and load all CSV files"""
         self.data_cache = {}  # Clear any existing cache
-        self.csv_dir = "CSVDUMP"
+        self.csv_dir = r"J:\CSVDUMPS"
         os.makedirs(self.csv_dir, exist_ok=True)
         
         # Load all CSV files into cache
         if os.path.exists(self.csv_dir):
-            for file in os.listdir(self.csv_dir):
+            print(f"Looking for CSV files in: {self.csv_dir}")
+            csv_files = [f for f in os.listdir(self.csv_dir) if f.endswith('.csv')]
+            print(f"Found {len(csv_files)} CSV files: {csv_files}")
+            for file in csv_files:
                 if file.endswith('.csv'):
-                    symbol, timeframe = file[:-4].split('_')
-                    self.load_from_csv(symbol, timeframe)
+                    parts = file[:-4].split('_')
+                    if len(parts) == 2:
+                        symbol, timeframe = parts
+                        # Normalize timeframe to match TIMEFRAMES in main.py
+                        # Add more detailed debug output
+                        print(f"Processing file {file} with symbol={symbol}, raw timeframe={timeframe}")
+                        
+                        # Normalize timeframes
+                        timeframe = timeframe.lower()
+                        if timeframe == '60m' or timeframe == 'h1':
+                            timeframe = '1h'
+                        elif timeframe == 'd1':
+                            timeframe = '1d'
+                        # Other timeframes (5m, 15m, 30m) should already match
+                        
+                        print(f"Loading {symbol} {timeframe} from {file}")
+                        self.load_from_csv(symbol, timeframe)
+                    else:
+                        print(f"Skipping file with unexpected format: {file}")
     
     def _get_cache_key(self, symbol: str, timeframe: str) -> str:
+        # Normalize timeframe format
+        timeframe = timeframe.lower()
+        if timeframe == '60m' or timeframe == 'h1':
+            timeframe = '1h'
+        elif timeframe == 'd1':
+            timeframe = '1d'
         return f"{symbol}_{timeframe}"
     
     def _get_csv_path(self, symbol: str, timeframe: str) -> str:
-        return os.path.join(self.csv_dir, f"{symbol}_{timeframe}.csv")
+        cache_key = self._get_cache_key(symbol, timeframe)
+        return os.path.join(self.csv_dir, f"{cache_key}.csv")
     
     def load_from_csv(self, symbol: str, timeframe: str) -> bool:
         """Load data from CSV file into cache"""
         cache_key = self._get_cache_key(symbol, timeframe)
         csv_path = self._get_csv_path(symbol, timeframe)
+        print(f"Checking for CSV file: {csv_path}")
         if os.path.exists(csv_path):
             try:
                 # Read CSV and parse dates in the exact format from the file
                 df = pd.read_csv(csv_path)
+                print(f"CSV loaded. First few rows: {df.head(2)}")
+                
                 # Convert the date string to datetime
                 df['Date'] = pd.to_datetime(df['Date'], format='%Y.%m.%d %H:%M')
                 df.set_index('Date', inplace=True)
                 df.index = df.index.tz_localize('UTC')
                 df = df.sort_index()
                 self.data_cache[cache_key] = df
+                print(f"Successfully loaded {symbol} {timeframe} into cache with {len(df)} rows")
                 return True
             except Exception as e:
-                logging.error(f"Error loading CSV: {e}")
+                logging.error(f"Error loading CSV for {symbol} {timeframe}: {e}")
+                print(f"Error loading CSV for {symbol} {timeframe}: {e}")
+        else:
+            print(f"CSV file not found: {csv_path}")
         return False
     
     def save_to_csv(self, symbol: str, timeframe: str):
@@ -102,41 +141,96 @@ class ForexDataCache:
     
     def get_data(self, symbol: str, timeframe: str, num_bars: int, start_date: datetime = None) -> pd.DataFrame:
         """Get data from cache or fetch from yfinance"""
-        cache_key = self._get_cache_key(symbol, timeframe)
-        
+        # Ensure start_date has a timezone
         if start_date is None:
             start_date = datetime.now(pytz.UTC)
-        elif not start_date.tzinfo:
-            start_date = pytz.UTC.localize(start_date)
-        
-        # Calculate how far back we need data
-        if timeframe.lower().endswith('m'):
-            delta = timedelta(minutes=int(timeframe[:-1]) * num_bars)
-        elif timeframe.lower().endswith('h'):
-            delta = timedelta(hours=int(timeframe[:-1]) * num_bars)
-        else:  # daily
-            delta = timedelta(days=num_bars)
-        
-        required_start = start_date - delta
+        elif start_date.tzinfo is None:
+            start_date = start_date.replace(tzinfo=pytz.UTC)
+            
+        # Calculate the time range we need
+        if timeframe.lower() == '1d' or timeframe.lower() == 'd1':
+            # For daily data, we need to be more lenient with the date range
+            # Use days instead of more precise times for comparing daily data
+            delta = timedelta(days=num_bars + 3)  # Add extra days to ensure we have enough data
+            
+            # For daily data, we want to truncate the time part to only consider the date
+            # This avoids issues with partial days being considered different days
+            start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif timeframe.lower() == '1h' or timeframe.lower() == '60m' or timeframe.lower() == 'h1':
+            delta = timedelta(hours=num_bars + 2)  # Add extra hours to ensure we have enough data
+        elif timeframe.lower() == '30m' or timeframe.lower() == 'm30':
+            delta = timedelta(minutes=30 * (num_bars + 1))
+        elif timeframe.lower() == '15m' or timeframe.lower() == 'm15':
+            delta = timedelta(minutes=15 * (num_bars + 1))
+        elif timeframe.lower() == '5m' or timeframe.lower() == 'm5':
+            delta = timedelta(minutes=5 * (num_bars + 1))
+        else:
+            # Default to 1 hour
+            delta = timedelta(hours=num_bars + 2)
+            
+        cache_key = self._get_cache_key(symbol, timeframe)
+        print(f"Attempting to get data for {symbol} {timeframe} with cache_key: {cache_key}")
+        print(f"Looking for data from {start_date - delta} to {start_date}")
         
         # Check if we have valid data in cache
         if cache_key in self.data_cache:
+            print(f"Found {cache_key} in cache with {len(self.data_cache[cache_key])} entries")
             data = self.data_cache[cache_key]
             if not data.empty:
-                # Get the data up to our end time
-                data_at_time = data[data.index <= start_date]
-                if not data_at_time.empty:
-                    latest_time = data_at_time.index.max()
-                    earliest_needed = start_date - delta
+                # Special handling for daily data
+                if timeframe.lower() == '1d' or timeframe.lower() == 'd1':
+                    # For daily data, we don't care about the time part, only the date
+                    # Get all data up to our end date, ignoring time
+                    data_dates = data.index.date
+                    start_date_date = start_date.date()
+                    data_at_time = data[data_dates <= start_date_date]
                     
-                    # Check if we have enough data in our range
-                    data_in_range = data_at_time[data_at_time.index >= earliest_needed]
-                    if len(data_in_range) >= num_bars:
-                        print(f"Using cached data for {symbol} {timeframe}")
-                        return data_in_range.tail(num_bars)
+                    print(f"For daily data, using date comparison instead of datetime")
+                    print(f"Found {len(data_at_time)} entries up to {start_date.date()}")
+                    
+                    if not data_at_time.empty:
+                        latest_date = max(data_dates)
+                        earliest_needed_date = (start_date - delta).date()
+                        print(f"Latest date in cache: {latest_date}")
+                        print(f"Earliest date needed: {earliest_needed_date}")
+                        
+                        # Check if we have enough data in our range
+                        # For daily data, we'll count the number of unique dates in the required range
+                        dates_in_range = [d for d in data_dates if d >= earliest_needed_date and d <= start_date_date]
+                        print(f"Found {len(dates_in_range)} dates in the required date range")
+                        
+                        if len(dates_in_range) >= num_bars:
+                            data_in_range = data_at_time.tail(num_bars)
+                            print(f"{Fore.GREEN}Using cached data for {symbol} {timeframe}{Style.RESET_ALL}")
+                            return data_in_range
+                else:
+                    # Standard handling for other timeframes
+                    # Get the data up to our end time
+                    data_at_time = data[data.index <= start_date]
+                    print(f"Found {len(data_at_time)} entries up to {start_date}")
+                    if not data_at_time.empty:
+                        latest_time = data_at_time.index.max()
+                        earliest_needed = start_date - delta
+                        print(f"Latest time in cache: {latest_time}")
+                        print(f"Earliest time needed: {earliest_needed}")
+                        
+                        # Check if we have enough data in our range
+                        data_in_range = data_at_time[data_at_time.index >= earliest_needed]
+                        print(f"Found {len(data_in_range)} entries in the required date range")
+                        if len(data_in_range) >= num_bars:
+                            print(f"{Fore.GREEN}Using cached data for {symbol} {timeframe}{Style.RESET_ALL}")
+                            return data_in_range.tail(num_bars)
+                        else:
+                            print(f"Not enough data in cache: {len(data_in_range)} < {num_bars} required")
+                    else:
+                        print(f"No data found in cache up to {start_date}")
+            else:
+                print(f"Cache for {cache_key} is empty")
+        else:
+            print(f"No cache entry found for {cache_key}")
         
         # If we get here, we need new data
-        print(f"Fetching {symbol} {timeframe} data from yfinance...")
+        print(f"{Fore.RED}Fetching {symbol} {timeframe} data from yfinance...{Style.RESET_ALL}")
         yf_interval = get_timeframe_interval(timeframe)
         ticker = yf.Ticker(f"{symbol}=X")
         
@@ -174,12 +268,17 @@ def get_timeframe_interval(timeframe: str) -> str:
     timeframe = timeframe.lower()  # Convert to lowercase to match Yahoo Finance format
     
     # Handle special cases
-    if timeframe == '1d':
-        # For daily data, we need to adjust the period and interval
-        return '1d'
-    elif timeframe == '1h':
+    if timeframe == '1h' or timeframe == '60m' or timeframe == 'h1':
         return '60m'
-    
+    elif timeframe == '1d' or timeframe == 'd1':
+        return '1d'
+    elif timeframe == '5m' or timeframe == 'm5':
+        return '5m'
+    elif timeframe == '15m' or timeframe == 'm15':
+        return '15m'
+    elif timeframe == '30m' or timeframe == 'm30':
+        return '30m'
+    # Other timeframes (5m, 15m, 30m) already match Yahoo Finance format
     return timeframe
 
 def get_forex_data(symbol: str, timeframe: str = "M5", num_bars: int = 1, start_date: datetime = None) -> Dict[str, Any]:
@@ -195,48 +294,52 @@ def get_forex_data(symbol: str, timeframe: str = "M5", num_bars: int = 1, start_
     Returns:
         Dict containing the forex data including multiple bars of price data
     """
-    try:
-        if start_date and not start_date.tzinfo:
-            start_date = pytz.UTC.localize(start_date)
-        
-        cache = ForexDataCache()
-        hist = cache.get_data(symbol, timeframe, num_bars, start_date)
-        
-        if hist.empty:
-            return {"error": "No data available for the specified symbol"}
-        
-        end_date = start_date if start_date else datetime.now(pytz.UTC)
-        last_n_bars = hist[:end_date].tail(num_bars).iloc[::-1]  # Reverse so newest is last
-        
-        if len(last_n_bars) < num_bars:
-            return {"error": f"Only {len(last_n_bars)} bars available"}
-        
-        result = {
-            "From": symbol[:3],
-            "To": symbol[3:],
-            "Timeframe": timeframe,
+    # Convert MT5 timeframes to yfinance format if needed
+    if timeframe.upper().startswith('M'):
+        # Convert 'M1', 'M5', 'M15', 'M30' to '1m', '5m', '15m', '30m'
+        timeframe = timeframe[1:] + 'm'
+    elif timeframe.upper() == 'H1':
+        timeframe = '1h'
+    elif timeframe.upper() == 'D1':
+        timeframe = '1d'
+    
+    # Normalize symbol format (remove / if present)
+    symbol = symbol.replace('/', '')
+    
+    print(f"Fetching last {num_bars} {timeframe} bars for {symbol}...")
+    
+    # Get the data from cache or yfinance
+    data_cache = ForexDataCache()
+    df = data_cache.get_data(symbol, timeframe, num_bars, start_date)
+    
+    if df.empty:
+        print(f"No data available for {symbol} {timeframe}")
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "data": []
         }
-        
-        # Add numbered price data with timestamps
-        for i, (idx, row) in enumerate(last_n_bars.iterrows(), 1):
-            # Convert index to datetime if it's not already
-            if isinstance(idx, pd.Timestamp):
-                bar_time = idx.strftime("%Y-%m-%d %H:%M")
-            else:
-                # Handle string or other index types
-                bar_time = pd.to_datetime(str(idx)).strftime("%Y-%m-%d %H:%M")
-            
-            result[f"Time{i}"] = bar_time
-            result[f"Open{i}"] = row['Open']
-            result[f"High{i}"] = row['High']
-            result[f"Low{i}"] = row['Low']
-            result[f"Close{i}"] = row['Close']
-        
-        # Set start and end times from the actual data
-        result["StartTime"] = result[f"Time{num_bars}"]  # Oldest bar
-        result["EndTime"] = result["Time1"]  # Newest bar
-        
-        return result
-        
-    except Exception as e:
-        return {"error": str(e)}
+    
+    # Format the time range for display
+    start_time = df.index.min().strftime('%Y-%m-%d %H:%M')
+    end_time = df.index.max().strftime('%Y-%m-%d %H:%M')
+    print(f"Time Range: {start_time} to {end_time}")
+    
+    # Convert the data to the desired format
+    result = {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "data": []
+    }
+    
+    for idx, row in df.iterrows():
+        bar_data = {
+            "time": idx.strftime('%Y-%m-%d %H:%M:%S'),
+            "open": row['Open'],
+            "high": row['High'],
+            "low": row['Low'],
+            "close": row['Close']
+        }
+        result["data"].append(bar_data)
+    
+    return result
