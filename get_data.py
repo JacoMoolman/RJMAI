@@ -2,7 +2,7 @@
 Data Management Process:
 1. On initialization:
    - Clear any existing cache from memory
-   - Load ALL CSV files from J:\CSVDUMPS into memory cache
+   - Load ALL CSV files from J:\\CSVDUMPS into memory cache
    - Normalize timeframe formats during loading (e.g., 'd1' -> '1d', 'h1' -> '1h')
    - CSV files are sorted by date/time to ensure proper ordering
 
@@ -23,8 +23,14 @@ Data Management Process:
      b) Convert timezone to UTC if needed
      c) Merge with existing data if available
      d) Remove duplicates and sort by date/time
-     e) Update both memory cache and CSV file in J:\CSVDUMPS
+     e) Update both memory cache and CSV file in J:\\CSVDUMPS
      f) Return requested range
+
+3. Date and Time Processing:
+   - Provides weekday calculation functionality (get_weekday function)
+   - Converts date strings to datetime objects
+   - Determines the day of week (0-6, with Sunday as 0)
+   - Supports calculations for data analysis and feature engineering
 
 This ensures we always:
 - Start fresh with each run
@@ -33,6 +39,7 @@ This ensures we always:
 - Process daily data correctly by date rather than datetime
 - Keep CSV files sorted and up to date
 - Only fetch from yfinance when absolutely necessary
+- Can determine weekday information for temporal analysis
 """
 
 import yfinance as yf
@@ -294,6 +301,32 @@ def get_timeframe_interval(timeframe: str) -> str:
         return '30m'
     # Other timeframes (5m, 15m, 30m) already match Yahoo Finance format
     return timeframe
+
+def get_weekday(date_string):
+    """
+    Get the weekday (0-6) for a given date string, where Sunday is 0.
+    
+    Args:
+        date_string (str): Date string in format 'YYYY-MM-DD HH:MM:SS' or datetime object
+        
+    Returns:
+        int: Weekday number (0 for Sunday, 1 for Monday, ..., 6 for Saturday)
+    """
+    if isinstance(date_string, str):
+        # Parse the date string to a datetime object
+        date_obj = datetime.strptime(date_string, "%Y-%m-%d %H:%M:%S")
+    else:
+        # Already a datetime object
+        date_obj = date_string
+    
+    # Get weekday (0 is Monday in Python's datetime, so we need to adjust)
+    weekday = date_obj.weekday()
+    
+    # Adjust to make Sunday 0 (Python's weekday is 0 for Monday, 6 for Sunday)
+    # So we add 1 and take modulo 7 to make Sunday 0
+    adjusted_weekday = (weekday + 1) % 7
+    
+    return adjusted_weekday
 
 def get_forex_data(symbol: str, timeframe: str = "M5", num_bars: int = 1, start_date: datetime = None) -> Dict[str, Any]:
     """

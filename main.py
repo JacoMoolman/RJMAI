@@ -11,8 +11,10 @@ FUNCTIONALITY:
 2. Supports multiple timeframes simultaneously (5m, 15m, 30m, 1h, 1d)
 3. Processes a specified number of historical bars for each currency pair and timeframe
 4. Combines data from all timeframes into a single DataFrame for each currency pair
-5. Displays the data in a formatted, easy-to-read vertical layout
-6. Can target a specific historical date/time for analysis
+5. For each OHLC entry, calculates the weekday (0-6, with Sunday=0) from the timestamp
+6. Creates a comprehensive dataset with both price data and temporal features
+7. Displays the data in a formatted, easy-to-read layout with both OHLC and weekday information
+8. Can target a specific historical date/time for analysis
 
 CONFIGURATION OPTIONS:
 - NUM_BARS: Controls how many historical bars to retrieve for each timeframe
@@ -20,20 +22,26 @@ CONFIGURATION OPTIONS:
 - FOREX_PAIRS: List of currency pairs to analyze (e.g., EURUSD, GBPUSD)
 - TIMEFRAMES: List of timeframes to analyze (e.g., 5m, 15m, 30m, 1h, 1d)
 
+DATA STRUCTURE:
+- Each currency pair has a dataframe containing entries for all timeframes
+- For each OHLC value (Open, High, Low, Close), a corresponding weekday value is calculated
+- This creates a 1:1 relationship between price data and weekday information
+- The resulting dataset is twice the size of the original, with half being OHLC data and half being weekday data
+
 DEPENDENCIES:
-- get_data.py: Contains the function to fetch forex data
+- get_data.py: Contains the function to fetch forex data and calculate weekday values
 - pandas: For data manipulation and organization
 - datetime: For handling dates and times
 - pytz: For timezone management
 
 USAGE:
 Simply run the script with appropriate configuration values to get a multi-timeframe
-snapshot of the specified forex pairs at the specified date and time.
+snapshot of the specified forex pairs at the specified date and time, including weekday information.
 '''
 
 # Configuration
 NUM_BARS = 5  # Number of previous bars to fetch
-CUSTOM_DATE = "2025-02-20 12:30:00"  # Format: YYYY-MM-DD HH:MM:SS
+CUSTOM_DATE = "2024-02-20 12:30:00"  # Format: YYYY-MM-DD HH:MM:SS
 
 # List of forex pairs to analyze
 FOREX_PAIRS = [
@@ -53,7 +61,7 @@ TIMEFRAMES = [
     "1d"     # Daily
 ]
 
-from get_data import get_forex_data
+from get_data import get_forex_data, get_weekday
 import pandas as pd
 from datetime import datetime, timedelta
 from typing import Optional
@@ -102,10 +110,11 @@ def main():
     dataframes = {}
     for forex_pair in FOREX_PAIRS:
         print(f"Processing {forex_pair}")
-        # Create a dictionary to store all data for this currency pair
-        df_data = {}
         
-        # Process each timeframe
+        # Step 1: Create a dictionary for each original OHLC entry
+        original_entries = []
+        total_entries = 0
+        
         for timeframe in TIMEFRAMES:
             if timeframe not in all_data[forex_pair]:
                 continue
@@ -113,19 +122,81 @@ def main():
             data = all_data[forex_pair][timeframe]
             
             for i in range(1, NUM_BARS + 1):
-                # Use the actual timestamp from the data
-                df_data[f'timestamp_{timeframe}_{i}'] = [data["data"][i-1]["time"]]
-                df_data[f"Open_{timeframe}_{i}"] = [data["data"][i-1]["open"]]
-                df_data[f"High_{timeframe}_{i}"] = [data["data"][i-1]["high"]]
-                df_data[f"Low_{timeframe}_{i}"] = [data["data"][i-1]["low"]]
-                df_data[f"Close_{timeframe}_{i}"] = [data["data"][i-1]["close"]]
+                timestamp = data["data"][i-1]["time"]
+                
+                # Create entries for Open
+                open_entry = {
+                    "timestamp": timestamp,
+                    "column_name": f"Open_{timeframe}_{i}",
+                    "value": data["data"][i-1]["open"]
+                }
+                original_entries.append(open_entry)
+                total_entries += 1
+                
+                # Create entries for High
+                high_entry = {
+                    "timestamp": timestamp,
+                    "column_name": f"High_{timeframe}_{i}",
+                    "value": data["data"][i-1]["high"]
+                }
+                original_entries.append(high_entry)
+                total_entries += 1
+                
+                # Create entries for Low
+                low_entry = {
+                    "timestamp": timestamp,
+                    "column_name": f"Low_{timeframe}_{i}",
+                    "value": data["data"][i-1]["low"]
+                }
+                original_entries.append(low_entry)
+                total_entries += 1
+                
+                # Create entries for Close
+                close_entry = {
+                    "timestamp": timestamp,
+                    "column_name": f"Close_{timeframe}_{i}",
+                    "value": data["data"][i-1]["close"]
+                }
+                original_entries.append(close_entry)
+                total_entries += 1
         
-        # Create a single DataFrame for this currency pair with all timeframes
-        dataframes[forex_pair] = pd.DataFrame(df_data)
+        # Step 2: Create a duplicate set of entries with weekday values
+        weekday_entries = []
         
+        for entry in original_entries:
+            timestamp = entry["timestamp"]
+            column_parts = entry["column_name"].split('_')
+            timeframe = column_parts[1]
+            bar_num = column_parts[2]
+            
+            # Parse the timestamp to calculate weekday
+            dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+            weekday = (dt.weekday() + 1) % 7  # Convert to 0-6 where 0 is Sunday
+            
+            weekday_entry = {
+                "timestamp": timestamp,
+                "column_name": f"weekday_{timeframe}_{bar_num}",
+                "value": weekday
+            }
+            weekday_entries.append(weekday_entry)
+        
+        # Step 3: Combine all entries
+        all_entries = original_entries + weekday_entries
+        
+        # Step 4: Print all entries in the correct format
         print(f"\n{forex_pair} Combined Timeframe Data:")
         print("-" * 40)
-        display_forex_data(dataframes[forex_pair])
-
+        
+        # First print all original OHLC entries
+        for entry in original_entries:
+            print(f"{entry['timestamp']}::{entry['column_name']}: {entry['value']:.6f}")
+        
+        # Then print all weekday entries
+        for entry in weekday_entries:
+            print(f"{entry['timestamp']}::{entry['column_name']}: {int(entry['value'])}")
+        
+        # Store all entries in the dataframe
+        dataframes[forex_pair] = pd.DataFrame(all_entries)
+        
 if __name__ == "__main__":
     main()
