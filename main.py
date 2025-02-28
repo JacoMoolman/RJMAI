@@ -1,3 +1,36 @@
+'''
+FOREX DATA ANALYSIS AND AGGREGATION TOOL
+
+DESCRIPTION:
+This script functions as a comprehensive forex market analysis tool that retrieves, processes, and displays
+historical price data for multiple currency pairs across different timeframes. It's designed to provide
+a consolidated view of market conditions at a specific point in time.
+
+FUNCTIONALITY:
+1. Retrieves historical OHLC (Open, High, Low, Close) data for configurable currency pairs
+2. Supports multiple timeframes simultaneously (5m, 15m, 30m, 1h, 1d)
+3. Processes a specified number of historical bars for each currency pair and timeframe
+4. Combines data from all timeframes into a single DataFrame for each currency pair
+5. Displays the data in a formatted, easy-to-read vertical layout
+6. Can target a specific historical date/time for analysis
+
+CONFIGURATION OPTIONS:
+- NUM_BARS: Controls how many historical bars to retrieve for each timeframe
+- CUSTOM_DATE: Specifies the target date/time for analysis (format: YYYY-MM-DD HH:MM:SS)
+- FOREX_PAIRS: List of currency pairs to analyze (e.g., EURUSD, GBPUSD)
+- TIMEFRAMES: List of timeframes to analyze (e.g., 5m, 15m, 30m, 1h, 1d)
+
+DEPENDENCIES:
+- get_data.py: Contains the function to fetch forex data
+- pandas: For data manipulation and organization
+- datetime: For handling dates and times
+- pytz: For timezone management
+
+USAGE:
+Simply run the script with appropriate configuration values to get a multi-timeframe
+snapshot of the specified forex pairs at the specified date and time.
+'''
+
 # Configuration
 NUM_BARS = 5  # Number of previous bars to fetch
 CUSTOM_DATE = "2025-02-20 12:30:00"  # Format: YYYY-MM-DD HH:MM:SS

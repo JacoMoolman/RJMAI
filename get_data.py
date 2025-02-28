@@ -2,21 +2,35 @@
 Data Management Process:
 1. On initialization:
    - Clear any existing cache from memory
-   - Load ALL CSV files into memory cache
+   - Load ALL CSV files from J:\CSVDUMPS into memory cache
+   - Normalize timeframe formats during loading (e.g., 'd1' -> '1d', 'h1' -> '1h')
    - CSV files are sorted by date/time to ensure proper ordering
 
 2. When requesting data:
+   - First normalize timeframe format for consistency (e.g., 'd1'/'1d', 'h1'/'1h')
+   - Generate a cache key based on symbol and normalized timeframe
    - Check if requested date range exists in memory cache
-   - If data exists in cache and covers the time range, use it
-   - If not, fetch from yfinance, then:
-     a) Merge with existing data
-     b) Sort by date/time
-     c) Update both memory cache and CSV file
-     d) Return requested range
+   - For daily data ('1d'/'d1'):
+     a) Ignore time parts and only compare dates
+     b) Look for data between earliest needed date and the requested date
+     c) Ensure there are enough unique dates in the required range
+   - For other timeframes (5m, 15m, 30m, 1h):
+     a) Compare exact datetimes including time parts
+     b) Ensure there are enough entries within the required time range
+   - If sufficient data exists in cache, return it with GREEN status message
+   - If not, fetch from yfinance with RED status message, then:
+     a) Add buffer time to ensure enough data is fetched
+     b) Convert timezone to UTC if needed
+     c) Merge with existing data if available
+     d) Remove duplicates and sort by date/time
+     e) Update both memory cache and CSV file in J:\CSVDUMPS
+     f) Return requested range
 
 This ensures we always:
 - Start fresh with each run
 - Have all CSV data loaded
+- Handle different timeframe formats consistently
+- Process daily data correctly by date rather than datetime
 - Keep CSV files sorted and up to date
 - Only fetch from yfinance when absolutely necessary
 """
