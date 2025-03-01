@@ -42,8 +42,10 @@ snapshot of the specified forex pairs at the specified date and time, including 
 '''
 
 # Configuration
-NUM_BARS = 5  # Number of previous bars to fetch
+NUM_BARS = 10  # Number of previous bars to fetch
 CUSTOM_DATE = "2024-02-20 12:30:00"  # Format: YYYY-MM-DD HH:MM:SS
+DISPLAY_DATAFRAME = True  # Toggle to display the combined dataframe to console
+SAVE_TO_CSV = True  # Toggle to save dataframes to CSV files
 
 # List of forex pairs to analyze
 FOREX_PAIRS = [
@@ -185,20 +187,20 @@ def main():
         # Step 3: Combine all entries
         all_entries = original_entries + weekday_entries
         
-        # Step 4: Print all entries in the correct format
-        print(f"\n{forex_pair} Combined Timeframe Data:")
-        print("-" * 40)
-        
-        # First print all original OHLC entries
-        for entry in original_entries:
-            print(f"{entry['timestamp']}::{entry['column_name']}: {entry['value']:.6f}")
-        
-        # Then print all weekday entries
-        for entry in weekday_entries:
-            print(f"{entry['timestamp']}::{entry['column_name']}: {int(entry['value'])}")
-        
-        # Store all entries in the dataframe
+        # Step 4: Store all entries in the dataframe and display if enabled
         dataframes[forex_pair] = pd.DataFrame(all_entries)
+        
+        if DISPLAY_DATAFRAME:
+            print(f"\n{forex_pair} Combined Timeframe Data:")
+            print("-" * 40)
+            print(dataframes[forex_pair])
+            print("\n")
+        
+        # Step 5: Save dataframe to CSV if enabled
+        if SAVE_TO_CSV:
+            csv_filename = f"{forex_pair}_data.csv"
+            dataframes[forex_pair].to_csv(csv_filename, index=False)
+            print(f"Saved {forex_pair} data to {csv_filename}")
         
 if __name__ == "__main__":
     main()

@@ -30,6 +30,7 @@ ENV/
 .vscode/
 *.swp
 *.swo
+*.csv
 
 # Jupyter Notebook
 .ipynb_checkpoints
