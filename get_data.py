@@ -128,7 +128,22 @@ class ForexDataCache:
                 print(f"CSV loaded. First few rows: {df.head(2)}")
                 
                 # Convert the date string to datetime
-                df['Date'] = pd.to_datetime(df['Date'], format='%Y.%m.%d %H:%M')
+                # Special handling for daily data format which might not have minutes
+                if timeframe.lower() == '1d' or timeframe.lower() == 'd1':
+                    try:
+                        # Try the format with time
+                        df['Date'] = pd.to_datetime(df['Date'], format='%Y.%m.%d %H:%M')
+                    except ValueError:
+                        # If that fails, try the format without time
+                        try:
+                            df['Date'] = pd.to_datetime(df['Date'], format='%Y.%m.%d')
+                        except ValueError:
+                            # If that also fails, let pandas infer the format
+                            df['Date'] = pd.to_datetime(df['Date'])
+                else:
+                    # Standard format for non-daily timeframes
+                    df['Date'] = pd.to_datetime(df['Date'], format='%Y.%m.%d %H:%M')
+                
                 df.set_index('Date', inplace=True)
                 df.index = df.index.tz_localize('UTC')
                 df = df.sort_index()
@@ -223,10 +238,20 @@ class ForexDataCache:
                         dates_in_range = [d for d in data_dates if d >= earliest_needed_date and d <= start_date_date]
                         print(f"Found {len(dates_in_range)} dates in the required date range")
                         
-                        if len(dates_in_range) >= num_bars:
-                            data_in_range = data_at_time.tail(num_bars)
-                            print(f"{Fore.GREEN}Using cached data for {symbol} {timeframe}{Style.RESET_ALL}")
+                        # Check if we have enough unique dates OR if the cache contains data covering a date range at least as large as what we need
+                        if len(dates_in_range) >= num_bars or (len(data_at_time) > 0 and latest_date >= start_date_date and earliest_needed_date >= min(data_dates)):
+                            print(f"{Fore.GREEN}Using cached data for {symbol} {timeframe} - We have sufficient historical data{Style.RESET_ALL}")
+                            # Make sure we return the right amount of data
+                            if len(dates_in_range) >= num_bars:
+                                data_in_range = data_at_time.tail(num_bars)
+                            else:
+                                # Just use what we have if it's in the right range
+                                data_in_range = data_at_time
                             return data_in_range
+                        else:
+                            print(f"Not enough data in cache: {len(data_in_range)} < {num_bars} required")
+                    else:
+                        print(f"No data found in cache up to {start_date}")
                 else:
                     # Standard handling for other timeframes
                     # Get the data up to our end time
@@ -412,9 +437,10 @@ def visualize_forex_data(dataframes):
         timeframes = sorted(list(timeframes))
         num_timeframes = len(timeframes)
         
-        # Create a single figure for this forex pair
+        # Create a single figure for this forex pair with dark background
         fig = plt.figure(figsize=(14, 10))  # More square aspect ratio
-        fig.suptitle(f"{forex_pair} - Price Data Visualization", fontsize=14)
+        fig.suptitle(f"{forex_pair} - Price Data Visualization", fontsize=14, color='white')
+        fig.patch.set_facecolor('black')  # Set figure background to black
         
         # Calculate grid dimensions
         if num_timeframes <= 5:
@@ -436,7 +462,12 @@ def visualize_forex_data(dataframes):
             col = i % ncols   # Modulo to get column index
             
             ax = fig.add_subplot(gs[row, col])
-            ax.set_title(f"{timeframe}", fontsize=12, pad=4)
+            ax.set_title(f"{timeframe}", fontsize=12, pad=4, color='white')
+            ax.set_facecolor('black')  # Set subplot background to black
+            
+            # Set spine colors to white
+            for spine in ax.spines.values():
+                spine.set_color('white')
             
             # Get all bar numbers for this timeframe
             bar_numbers = set()
@@ -491,7 +522,7 @@ def visualize_forex_data(dataframes):
                 x_positions = list(range(len(opens)))  # This ensures bars are adjacent with no spaces
                 
                 # Plot high-low range with sequential positions
-                ax.vlines(x_positions, lows, highs, color='black', linewidth=0.7)
+                ax.vlines(x_positions, lows, highs, color='white', linewidth=0.7)
                 
                 # Make bars touch each other with ABSOLUTELY NO gaps
                 width = 1.0  # Width of 1.0 ensures bars fully touch with no gap
@@ -531,17 +562,18 @@ def visualize_forex_data(dataframes):
                         visible_labels.append(hour_min)
                 
                 ax.set_xticks(visible_ticks)
-                ax.set_xticklabels(visible_labels, rotation=0, fontsize=6)
+                ax.set_xticklabels(visible_labels, rotation=0, fontsize=6, color='white')
                 
-                # Make tick labels smaller
-                ax.tick_params(axis='y', labelsize=6)
+                # Make tick labels smaller and white
+                ax.tick_params(axis='y', labelsize=6, colors='white')
+                ax.tick_params(axis='x', colors='white')
                 
-                # Grid for better readability - lighter grid
-                ax.grid(True, alpha=0.2, linestyle=':')
+                # Grid for better readability - lighter grid with white lines
+                ax.grid(True, alpha=0.3, linestyle=':', color='gray')
                 
                 # Set axis labels - minimal and compact
-                ax.set_xlabel('Time', fontsize=8, labelpad=2)
-                ax.set_ylabel('Price', fontsize=8, labelpad=2)
+                ax.set_xlabel('Time', fontsize=8, labelpad=2, color='white')
+                ax.set_ylabel('Price', fontsize=8, labelpad=2, color='white')
                 
                 # Adjust y-axis to have a reasonable range
                 y_range = max(highs) - min(lows)

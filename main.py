@@ -40,8 +40,11 @@ snapshot of the specified forex pairs at the specified date and time, including 
 '''
 
 # Configuration
-NUM_BARS = 50  # Number of previous bars to fetch
-CUSTOM_DATE = "2024-02-20 12:30:00"  # Format: YYYY-MM-DD HH:MM:SS
+NUM_BARS = 100  # Number of previous bars to fetch
+CUSTOM_DATE = "2024-02-14 12:00:00"  # Format: YYYY-MM-DD HH:MM:SS
+# Debug options
+DebugCharts = True   # Controls whether to display charts
+Debug_dataframe = True   # Controls whether to display dataframes
 
 # List of forex pairs to analyze
 FOREX_PAIRS = [
@@ -67,8 +70,15 @@ from datetime import datetime, timedelta
 from typing import Optional
 import pytz
 
+# This function isn't used in the code but we'll keep it 
+# in case it's needed in the future
 def display_forex_data(df):
     """Display forex data in a vertical format with timestamps"""
+    # Only display if Debug_dataframe is enabled
+    if not Debug_dataframe:
+        print("Dataframe display disabled (Debug_dataframe=False)")
+        return
+        
     for column in df.columns:
         if not column.startswith('timestamp_'):  # Skip the timestamp columns
             timeframe = column.split('_')[1]  # Extract timeframe from column name
@@ -190,21 +200,28 @@ def main():
         print(f"\n{forex_pair} Combined Timeframe Data:")
         print("-" * 40)
         
-        # Print directly from the final dataframe
-        for index, row in dataframes[forex_pair].iterrows():
-            timestamp = row['timestamp']
-            column_name = row['column_name']
-            value = row['value']
-            
-            if column_name.startswith('weekday_'):
-                print(f"{timestamp}::{column_name}: {int(value)}")
-            else:
-                print(f"{timestamp}::{column_name}: {value:.6f}")
+        # Only print if Debug_dataframe is enabled
+        if Debug_dataframe:
+            # Print directly from the final dataframe
+            for index, row in dataframes[forex_pair].iterrows():
+                timestamp = row['timestamp']
+                column_name = row['column_name']
+                value = row['value']
+                
+                if column_name.startswith('weekday_'):
+                    print(f"{timestamp}::{column_name}: {int(value)}")
+                else:
+                    print(f"{timestamp}::{column_name}: {value:.6f}")
+        else:
+            print("Dataframe output suppressed (Debug_dataframe=False)")
     
     # Visualize the data using the new function in get_data.py
     print("\nGenerating visualizations for each forex pair...")
-    from get_data import visualize_forex_data
-    visualize_forex_data(dataframes)
+    if DebugCharts:
+        from get_data import visualize_forex_data
+        visualize_forex_data(dataframes)
+    else:
+        print("Chart visualization suppressed (DebugCharts=False)")
 
 if __name__ == "__main__":
     main()
