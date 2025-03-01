@@ -40,7 +40,7 @@ snapshot of the specified forex pairs at the specified date and time, including 
 '''
 
 # Configuration
-NUM_BARS = 5  # Number of previous bars to fetch
+NUM_BARS = 50  # Number of previous bars to fetch
 CUSTOM_DATE = "2024-02-20 12:30:00"  # Format: YYYY-MM-DD HH:MM:SS
 
 # List of forex pairs to analyze
@@ -183,20 +183,28 @@ def main():
         # Step 3: Combine all entries
         all_entries = original_entries + weekday_entries
         
+        # Store all entries in the dataframe
+        dataframes[forex_pair] = pd.DataFrame(all_entries)
+        
         # Step 4: Print all entries in the correct format
         print(f"\n{forex_pair} Combined Timeframe Data:")
         print("-" * 40)
         
-        # First print all original OHLC entries
-        for entry in original_entries:
-            print(f"{entry['timestamp']}::{entry['column_name']}: {entry['value']:.6f}")
-        
-        # Then print all weekday entries
-        for entry in weekday_entries:
-            print(f"{entry['timestamp']}::{entry['column_name']}: {int(entry['value'])}")
-        
-        # Store all entries in the dataframe
-        dataframes[forex_pair] = pd.DataFrame(all_entries)
-        
+        # Print directly from the final dataframe
+        for index, row in dataframes[forex_pair].iterrows():
+            timestamp = row['timestamp']
+            column_name = row['column_name']
+            value = row['value']
+            
+            if column_name.startswith('weekday_'):
+                print(f"{timestamp}::{column_name}: {int(value)}")
+            else:
+                print(f"{timestamp}::{column_name}: {value:.6f}")
+    
+    # Visualize the data using the new function in get_data.py
+    print("\nGenerating visualizations for each forex pair...")
+    from get_data import visualize_forex_data
+    visualize_forex_data(dataframes)
+
 if __name__ == "__main__":
     main()
