@@ -1,3 +1,5 @@
+#GETDATA
+
 """
 Data Management Process:
 1. On initialization:
@@ -51,9 +53,6 @@ import pytz
 import os
 import colorama
 from colorama import Fore, Style
-import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
-import numpy as np
 
 # Initialize colorama
 colorama.init(autoreset=True)
@@ -128,22 +127,7 @@ class ForexDataCache:
                 print(f"CSV loaded. First few rows: {df.head(2)}")
                 
                 # Convert the date string to datetime
-                # Special handling for daily data format which might not have minutes
-                if timeframe.lower() == '1d' or timeframe.lower() == 'd1':
-                    try:
-                        # Try the format with time
-                        df['Date'] = pd.to_datetime(df['Date'], format='%Y.%m.%d %H:%M')
-                    except ValueError:
-                        # If that fails, try the format without time
-                        try:
-                            df['Date'] = pd.to_datetime(df['Date'], format='%Y.%m.%d')
-                        except ValueError:
-                            # If that also fails, let pandas infer the format
-                            df['Date'] = pd.to_datetime(df['Date'])
-                else:
-                    # Standard format for non-daily timeframes
-                    df['Date'] = pd.to_datetime(df['Date'], format='%Y.%m.%d %H:%M')
-                
+                df['Date'] = pd.to_datetime(df['Date'], format='%Y.%m.%d %H:%M')
                 df.set_index('Date', inplace=True)
                 df.index = df.index.tz_localize('UTC')
                 df = df.sort_index()
@@ -238,20 +222,10 @@ class ForexDataCache:
                         dates_in_range = [d for d in data_dates if d >= earliest_needed_date and d <= start_date_date]
                         print(f"Found {len(dates_in_range)} dates in the required date range")
                         
-                        # Check if we have enough unique dates OR if the cache contains data covering a date range at least as large as what we need
-                        if len(dates_in_range) >= num_bars or (len(data_at_time) > 0 and latest_date >= start_date_date and earliest_needed_date >= min(data_dates)):
-                            print(f"{Fore.GREEN}Using cached data for {symbol} {timeframe} - We have sufficient historical data{Style.RESET_ALL}")
-                            # Make sure we return the right amount of data
-                            if len(dates_in_range) >= num_bars:
-                                data_in_range = data_at_time.tail(num_bars)
-                            else:
-                                # Just use what we have if it's in the right range
-                                data_in_range = data_at_time
+                        if len(dates_in_range) >= num_bars:
+                            data_in_range = data_at_time.tail(num_bars)
+                            print(f"{Fore.GREEN}Using cached data for {symbol} {timeframe}{Style.RESET_ALL}")
                             return data_in_range
-                        else:
-                            print(f"Not enough data in cache: {len(data_in_range)} < {num_bars} required")
-                    else:
-                        print(f"No data found in cache up to {start_date}")
                 else:
                     # Standard handling for other timeframes
                     # Get the data up to our end time
@@ -418,279 +392,3 @@ def get_forex_data(symbol: str, timeframe: str = "M5", num_bars: int = 1, start_
         result["data"].append(bar_data)
     
     return result
-
-def visualize_forex_data(dataframes):
-    """
-    Create bar chart visualizations for each forex pair.
-    
-    Args:
-        dataframes (dict): Dictionary containing dataframes for each forex pair
-    """
-    for forex_pair, df in dataframes.items():
-        # Group by timeframe
-        timeframes = set()
-        for column_name in df['column_name'].unique():
-            if not column_name.startswith('weekday_'):
-                timeframe = column_name.split('_')[1]  # Extract timeframe
-                timeframes.add(timeframe)
-        
-        timeframes = sorted(list(timeframes))
-        num_timeframes = len(timeframes)
-        
-        # Create a single figure for this forex pair with dark background
-        fig = plt.figure(figsize=(14, 10))  # More square aspect ratio
-        fig.suptitle(f"{forex_pair} - Price Data Visualization", fontsize=14, color='white')
-        fig.patch.set_facecolor('black')  # Set figure background to black
-        
-        # Calculate grid dimensions
-        if num_timeframes <= 5:
-            # For 5 timeframes: 3 on top row, 2 on bottom row
-            nrows = 2
-            ncols = 3
-        else:
-            # For more timeframes, use a more square layout
-            nrows = (num_timeframes + 2) // 3  # Ceiling division to get number of rows
-            ncols = min(3, num_timeframes)     # Maximum 3 columns
-        
-        # Create GridSpec with proper spacing
-        gs = GridSpec(nrows, ncols, figure=fig)
-        gs.update(hspace=0.3, wspace=0.3)  # Adjust spacing between subplots
-        
-        # For each timeframe, create a subplot
-        for i, timeframe in enumerate(timeframes):
-            row = i // ncols  # Integer division to get row index
-            col = i % ncols   # Modulo to get column index
-            
-            ax = fig.add_subplot(gs[row, col])
-            ax.set_title(f"{timeframe}", fontsize=12, pad=4, color='white')
-            ax.set_facecolor('black')  # Set subplot background to black
-            
-            # Set spine colors to white
-            for spine in ax.spines.values():
-                spine.set_color('white')
-            
-            # Get all bar numbers for this timeframe
-            bar_numbers = set()
-            for column_name in df['column_name'].unique():
-                if not column_name.startswith('weekday_') and f"_{timeframe}_" in column_name:
-                    bar_number = int(column_name.split('_')[2])  # Extract bar number
-                    bar_numbers.add(bar_number)
-            
-            bar_numbers = sorted(list(bar_numbers))
-            
-            # For each bar, plot OHLC as a candlestick-like bar chart
-            x_positions = []
-            opens = []
-            highs = []
-            lows = []
-            closes = []
-            timestamps = []
-            
-            # Sort bar numbers to ensure correct ordering
-            bar_numbers = sorted(list(bar_numbers))
-            
-            # Process each bar and collect the data
-            for bar_num in bar_numbers:
-                # Filter for this specific bar
-                bar_data = df[df['column_name'].isin([
-                    f"Open_{timeframe}_{bar_num}",
-                    f"High_{timeframe}_{bar_num}",
-                    f"Low_{timeframe}_{bar_num}",
-                    f"Close_{timeframe}_{bar_num}"
-                ])]
-                
-                if not bar_data.empty:
-                    # Extract timestamp from any of the rows (they should all be the same for a single bar)
-                    timestamp = bar_data['timestamp'].iloc[0]
-                    timestamps.append(timestamp)
-                    
-                    # Extract OHLC values
-                    o_row = bar_data[bar_data['column_name'] == f"Open_{timeframe}_{bar_num}"]
-                    h_row = bar_data[bar_data['column_name'] == f"High_{timeframe}_{bar_num}"]
-                    l_row = bar_data[bar_data['column_name'] == f"Low_{timeframe}_{bar_num}"]
-                    c_row = bar_data[bar_data['column_name'] == f"Close_{timeframe}_{bar_num}"]
-                    
-                    if not (o_row.empty or h_row.empty or l_row.empty or c_row.empty):
-                        opens.append(o_row['value'].iloc[0])
-                        highs.append(h_row['value'].iloc[0])
-                        lows.append(l_row['value'].iloc[0])
-                        closes.append(c_row['value'].iloc[0])
-            
-            # Plot the data if we have any
-            if opens:  # Check if we have data
-                # Create SEQUENTIAL x-positions with NO GAPS
-                x_positions = list(range(len(opens)))  # This ensures bars are adjacent with no spaces
-                
-                # Plot high-low range with sequential positions
-                ax.vlines(x_positions, lows, highs, color='white', linewidth=0.7)
-                
-                # Make bars touch each other with ABSOLUTELY NO gaps
-                width = 1.0  # Width of 1.0 ensures bars fully touch with no gap
-                
-                # Plot open-close bars with colors
-                for j, (xpos, open_val, close_val) in enumerate(zip(x_positions, opens, closes)):
-                    if close_val >= open_val:
-                        color = 'green'  # Bullish bar
-                    else:
-                        color = 'red'    # Bearish bar
-                    
-                    # Draw rectangle for open-close range
-                    ax.bar(xpos, close_val - open_val, bottom=open_val, color=color, width=width, alpha=0.8)
-                
-                # Set x-axis labels - extremely minimal
-                ax.set_xticks(x_positions)
-                
-                # Show drastically fewer labels for readability
-                # If we have many bars, show only a few time labels
-                if len(timestamps) > 7:
-                    num_labels = min(7, len(timestamps))
-                    indices = [int(i * len(timestamps)/num_labels) for i in range(num_labels)]
-                    visible_ticks = [x_positions[i] for i in indices]
-                    visible_labels = []
-                    for i in indices:
-                        t = timestamps[i]
-                        time_part = t.split(' ')[1]
-                        hour_min = ":".join(time_part.split(':')[:2])  # Just HH:MM
-                        visible_labels.append(hour_min)
-                else:
-                    # If we have few bars, show all labels
-                    visible_ticks = x_positions
-                    visible_labels = []
-                    for t in timestamps:
-                        time_part = t.split(' ')[1]
-                        hour_min = ":".join(time_part.split(':')[:2])  # Just HH:MM
-                        visible_labels.append(hour_min)
-                
-                ax.set_xticks(visible_ticks)
-                ax.set_xticklabels(visible_labels, rotation=0, fontsize=6, color='white')
-                
-                # Make tick labels smaller and white
-                ax.tick_params(axis='y', labelsize=6, colors='white')
-                ax.tick_params(axis='x', colors='white')
-                
-                # Grid for better readability - lighter grid with white lines
-                ax.grid(True, alpha=0.3, linestyle=':', color='gray')
-                
-                # Set axis labels - minimal and compact
-                ax.set_xlabel('Time', fontsize=8, labelpad=2, color='white')
-                ax.set_ylabel('Price', fontsize=8, labelpad=2, color='white')
-                
-                # Adjust y-axis to have a reasonable range
-                y_range = max(highs) - min(lows)
-                y_padding = y_range * 0.1  # 10% padding
-                ax.set_ylim([min(lows) - y_padding, max(highs) + y_padding])
-        
-        # Adjust layout without using tight_layout (to avoid warnings)
-        fig.subplots_adjust(top=0.95, hspace=0.35, wspace=0.25, left=0.05, right=0.98, bottom=0.05)
-        
-        # Display the figure non-blocking
-        plt.figure(fig.number)
-        plt.show(block=False)
-    
-    # Keep the windows open until manually closed
-    plt.show()
-
-def main():
-    """
-    Main function to test visualization independently.
-    Fetches forex data and visualizes it.
-    """
-    from main import FOREX_PAIRS, TIMEFRAMES, NUM_BARS, CUSTOM_DATE
-    import pandas as pd
-    from datetime import datetime
-    import pytz
-    
-    try:
-        start_date = datetime.strptime(CUSTOM_DATE, "%Y-%m-%d %H:%M:%S")
-        # Make start_date timezone-aware by setting it to UTC
-        start_date = pytz.UTC.localize(start_date)
-        print(f"Using custom date: {start_date}")
-    except ValueError:
-        print("Invalid date format. Please use 'YYYY-MM-DD HH:MM:SS' format")
-        return
-    
-    # First, load all data into memory
-    all_data = {}
-    for forex_pair in FOREX_PAIRS:
-        print(f"Processing {forex_pair}")
-        all_data[forex_pair] = {}
-        for timeframe in TIMEFRAMES:
-            data = get_forex_data(forex_pair, timeframe, NUM_BARS, start_date)
-            
-            if len(data["data"]) == 0:
-                print(f"Error for {forex_pair} {timeframe}: No data available")
-                continue
-                
-            all_data[forex_pair][timeframe] = data
-    
-    # Process each currency pair and combine all timeframes
-    dataframes = {}
-    for forex_pair in FOREX_PAIRS:
-        # Create entries
-        original_entries = []
-        
-        for timeframe in TIMEFRAMES:
-            if timeframe not in all_data[forex_pair]:
-                continue
-                
-            data = all_data[forex_pair][timeframe]
-            
-            for i in range(1, NUM_BARS + 1):
-                if i-1 < len(data["data"]):  # Check if this bar exists
-                    timestamp = data["data"][i-1]["time"]
-                    
-                    # Create entries for Open, High, Low, Close
-                    for value_type in ["open", "high", "low", "close"]:
-                        entry = {
-                            "timestamp": timestamp,
-                            "column_name": f"{value_type.capitalize()}_{timeframe}_{i}",
-                            "value": data["data"][i-1][value_type]
-                        }
-                        original_entries.append(entry)
-        
-        # Calculate weekday entries
-        weekday_entries = []
-        for entry in original_entries:
-            timestamp = entry["timestamp"]
-            column_parts = entry["column_name"].split('_')
-            timeframe = column_parts[1]
-            bar_num = column_parts[2]
-            
-            # Parse the timestamp to calculate weekday
-            dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
-            weekday = (dt.weekday() + 1) % 7  # Convert to 0-6 where 0 is Sunday
-            
-            weekday_entry = {
-                "timestamp": timestamp,
-                "column_name": f"weekday_{timeframe}_{bar_num}",
-                "value": weekday
-            }
-            weekday_entries.append(weekday_entry)
-        
-        # Combine all entries
-        all_entries = original_entries + weekday_entries
-        
-        # Store in dataframe
-        dataframes[forex_pair] = pd.DataFrame(all_entries)
-        
-        # Print sample data
-        print(f"\n{forex_pair} Sample Data:")
-        print("-" * 40)
-        
-        # Print first few entries
-        for i, row in dataframes[forex_pair].head(10).iterrows():
-            timestamp = row['timestamp']
-            column_name = row['column_name']
-            value = row['value']
-            
-            if column_name.startswith('weekday_'):
-                print(f"{timestamp}::{column_name}: {int(value)}")
-            else:
-                print(f"{timestamp}::{column_name}: {value:.6f}")
-    
-    # Visualize the data
-    print("\nGenerating visualizations for each forex pair...")
-    visualize_forex_data(dataframes)
-
-if __name__ == "__main__":
-    main()
