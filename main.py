@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import time
 import matplotlib.pyplot as plt
-from jmai_toolbox import get_day_of_week_num, plot_forex_data
+from jmai_toolbox import get_day_of_week_num, plot_forex_data, create_display_dataframes, load_currency_pairs, display_currency_pairs
 
 # Number of bars to plot for each timeframe
 NUM_BARS_TO_PLOT = 20
@@ -30,66 +30,11 @@ TIMEFRAMES = [
 # Dictionary to store all DataFrames
 dataframes = {}
 
+# Dictionary to store display DataFrames
+display_dataframes = {}
+
 # Path to pickle files directory
 PICKLE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "picklefiles")
-
-def load_currency_pairs(pickle_dir=PICKLE_DIR):
-    print(f"Loading currency pairs from pickle files...")
-    start_time = time.time()
-    
-    # Create empty dictionary to store DataFrames
-    dfs = {}
-    loaded_count = 0
-    
-    # Check if pickle directory exists
-    if not os.path.exists(pickle_dir):
-        print(f"Error: Pickle directory {pickle_dir} does not exist!")
-        print("Please run convert_to_pickle.py first to create pickle files.")
-        return dfs
-    
-    # Process each currency pair and timeframe combination
-    for pair in CURRENCY_PAIRS:
-        for timeframe in TIMEFRAMES:
-            # Create the full pair_timeframe string (e.g., "EURUSD_H1")
-            pair_timeframe = f"{pair}_{timeframe}"
-            
-            # Full path to pickle file
-            pickle_file = os.path.join(pickle_dir, f"{pair_timeframe}.pkl")
-            
-            # Check if pickle file exists
-            if os.path.exists(pickle_file):
-                try:
-                    # Load from pickle file
-                    df = pd.read_pickle(pickle_file)
-                    
-                    # Store DataFrame in dictionary
-                    dfs[pair_timeframe] = df
-                    loaded_count += 1
-                    print(f"Loaded {pair_timeframe} - {len(df)} rows")
-                except Exception as e:
-                    print(f"Error loading {pair_timeframe}: {e}")
-            else:
-                print(f"Skipped {pair_timeframe} - pickle file not found")
-    
-    # Calculate elapsed time
-    elapsed_time = time.time() - start_time
-    print(f"Loaded {loaded_count} DataFrames in {elapsed_time:.2f} seconds")
-    
-    return dfs
-
-def display_currency_pairs(dfs, rows=2):
-    print(f"\nDisplaying first {rows} rows of each DataFrame:")
-    
-    # Check if any DataFrames were loaded
-    if not dfs:
-        print("No DataFrames to display!")
-        return
-    
-    # Display each DataFrame
-    for pair_timeframe, df in dfs.items():
-        print(f"\n{pair_timeframe}:")
-        print(df.head(rows))
-        print("-" * 80)
 
 def add_day_of_week_to_dataframes(dfs):
     for key in dfs:
@@ -97,13 +42,16 @@ def add_day_of_week_to_dataframes(dfs):
     return dfs
 
 # Load all currency pairs
-dataframes = load_currency_pairs()
+dataframes = load_currency_pairs(CURRENCY_PAIRS, TIMEFRAMES, PICKLE_DIR)
+
+# Create display dataframes with the specified number of bars
+display_dataframes = create_display_dataframes(dataframes, NUM_BARS_TO_PLOT)
 
 # Add day of week to all dataframes
 # dataframes = add_day_of_week_to_dataframes(dataframes)
 
-# Display the first 2 rows of each DataFrame
-display_currency_pairs(dataframes, rows=10)
+# Display the display DataFrames
+display_currency_pairs(display_dataframes, rows=10)
 
 # Plot forex data
-plot_forex_data(dataframes, CURRENCY_PAIRS, TIMEFRAMES, NUM_BARS_TO_PLOT)
+# plot_forex_data(display_dataframes, CURRENCY_PAIRS, TIMEFRAMES, NUM_BARS_TO_PLOT)
