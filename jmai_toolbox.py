@@ -209,12 +209,32 @@ def graph_display_dataframes(display_dfs):
                 
                 # Set x-axis ticks to show dates
                 if 'time' in df.columns:
-                    # Show both date and time instead of just date
-                    date_time_labels = [str(d) for d in df['time']]
-                    ax.set_xticks(range(len(df)))
-                    ax.set_xticklabels(date_time_labels, rotation=45, fontsize=8, color='#cccccc')
-                    # Move x-labels slightly further from axis to improve visibility
+                    # Only show start and end dates instead of all dates
+                    if len(df) > 0:
+                        start_date = df['time'].iloc[0]
+                        end_date = df['time'].iloc[-1]
+                        
+                        # Remove x-axis ticks completely
+                        ax.set_xticks([])
+                        
+                        # Add a text label at bottom center showing date range
+                        date_range_text = f"{start_date} to {end_date}"
+                        ax.annotate(date_range_text, 
+                                   xy=(0.5, -0.12), 
+                                   xycoords='axes fraction',
+                                   ha='center',
+                                   fontsize=10,
+                                   color='#cccccc')
+                    
+                    # Hide other x-tick labels to avoid clutter
                     ax.tick_params(axis='x', pad=8)
+                
+                # Calculate and set appropriate y-axis limits with a small margin
+                y_min = df['low'].min()
+                y_max = df['high'].max()
+                y_range = y_max - y_min
+                margin = y_range * 0.05  # 5% margin
+                ax.set_ylim(y_min - margin, y_max + margin)
                 
             else:
                 # Just plot a basic chart if we don't have time data
