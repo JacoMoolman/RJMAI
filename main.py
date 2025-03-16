@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import time
 import matplotlib.pyplot as plt
-from jmai_toolbox import get_day_of_week_num, plot_forex_data, create_display_dataframes, load_currency_pairs, display_currency_pairs
+from jmai_toolbox import get_day_of_week_num, create_display_dataframes, load_currency_pairs, display_currency_pairs
 
 # Number of bars to plot for each timeframe
 NUM_BARS_TO_PLOT = 20
@@ -10,11 +10,11 @@ NUM_BARS_TO_PLOT = 20
 # List of all currency pairs (uncomment/comment to include/exclude)
 CURRENCY_PAIRS = [
     'AUDUSD',
-    'EURUSD',
-    'GBPUSD',
-    'USDCAD',
-    'USDCHF',
-    'USDJPY'
+    # 'EURUSD',
+    # 'GBPUSD',
+    # 'USDCAD',
+    # 'USDCHF',
+    # 'USDJPY'
 ]
 
 # List of all timeframes (uncomment/comment to include/exclude)
@@ -52,6 +52,3 @@ display_dataframes = create_display_dataframes(dataframes, NUM_BARS_TO_PLOT)
 
 # Display the display DataFrames
 display_currency_pairs(display_dataframes, rows=10)
-
-# Plot forex data
-# plot_forex_data(display_dataframes, CURRENCY_PAIRS, TIMEFRAMES, NUM_BARS_TO_PLOT)
