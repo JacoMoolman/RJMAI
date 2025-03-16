@@ -1,6 +1,11 @@
 import os
 import pandas as pd
 import time
+import matplotlib.pyplot as plt
+from jmai_toolbox import get_day_of_week_num, plot_forex_data
+
+# Number of bars to plot for each timeframe
+NUM_BARS_TO_PLOT = 20
 
 # List of all currency pairs (uncomment/comment to include/exclude)
 CURRENCY_PAIRS = [
@@ -29,15 +34,6 @@ dataframes = {}
 PICKLE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "picklefiles")
 
 def load_currency_pairs(pickle_dir=PICKLE_DIR):
-    """
-    Load all currency pair data into DataFrames from pickle files
-    
-    Args:
-        pickle_dir (str): Directory containing the pickle files
-        
-    Returns:
-        dict: Dictionary of DataFrames with currency pair names as keys
-    """
     print(f"Loading currency pairs from pickle files...")
     start_time = time.time()
     
@@ -82,13 +78,6 @@ def load_currency_pairs(pickle_dir=PICKLE_DIR):
     return dfs
 
 def display_currency_pairs(dfs, rows=2):
-    """
-    Display the first few rows of each DataFrame
-    
-    Args:
-        dfs (dict): Dictionary of DataFrames
-        rows (int): Number of rows to display
-    """
     print(f"\nDisplaying first {rows} rows of each DataFrame:")
     
     # Check if any DataFrames were loaded
@@ -102,8 +91,19 @@ def display_currency_pairs(dfs, rows=2):
         print(df.head(rows))
         print("-" * 80)
 
+def add_day_of_week_to_dataframes(dfs):
+    for key in dfs:
+        dfs[key]['day_of_week'] = dfs[key]['time'].apply(get_day_of_week_num)
+    return dfs
+
 # Load all currency pairs
 dataframes = load_currency_pairs()
 
+# Add day of week to all dataframes
+# dataframes = add_day_of_week_to_dataframes(dataframes)
+
 # Display the first 2 rows of each DataFrame
-display_currency_pairs(dataframes, rows=2)
+display_currency_pairs(dataframes, rows=10)
+
+# Plot forex data
+plot_forex_data(dataframes, CURRENCY_PAIRS, TIMEFRAMES, NUM_BARS_TO_PLOT)
