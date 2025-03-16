@@ -2,10 +2,10 @@ import os
 import pandas as pd
 import time
 import matplotlib.pyplot as plt
-from jmai_toolbox import get_day_of_week_num, create_display_dataframes, load_currency_pairs, display_currency_pairs
+from jmai_toolbox import get_day_of_week_num, create_display_dataframes, load_currency_pairs, display_currency_pairs, graph_display_dataframes
 
 # Number of bars to plot for each timeframe
-NUM_BARS_TO_PLOT = 5
+NUM_BARS_TO_PLOT = 10
 
 # Dictionary to store all DataFrames
 dataframes = {}
@@ -55,4 +55,7 @@ display_dataframes = create_display_dataframes(dataframes, NUM_BARS_TO_PLOT)
 
 # Display the display DataFrames
 display_currency_pairs(display_dataframes, rows=NUM_BARS_TO_PLOT)
+
+# Graph the display dataframes with 3 charts at top and 3 at bottom
+graph_display_dataframes(display_dataframes)
 #####MAIN#####

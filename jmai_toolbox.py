@@ -13,6 +13,7 @@ import numpy as np
 import os
 import time
 from matplotlib import patches
+import mplfinance as mpf
 
 
 def get_day_of_week_num(date_input: Union[str, datetime.date, datetime.datetime], 
@@ -133,3 +134,105 @@ def display_currency_pairs(display_dfs, rows=None):
         else:
             print(df)
         # print("-" * 80)
+
+
+def graph_display_dataframes(display_dfs):
+    """
+    Graph the display dataframes with 3 charts at the top and 3 at the bottom.
+    
+    Args:
+        display_dfs: Dictionary of display dataframes to graph
+    """
+    print("\nGenerating forex bar charts...")
+    
+    # Check if any DataFrames were loaded
+    if not display_dfs:
+        print("No display DataFrames to graph!")
+        return
+    
+    # Get the keys from the display_dfs dictionary
+    keys = list(display_dfs.keys())
+    
+    # Only process up to 6 charts
+    chart_keys = keys[:6]
+    num_charts = len(chart_keys)
+    
+    # Set dark mode style
+    plt.style.use('dark_background')
+    
+    # Define subplot layout - 2 rows, 3 columns
+    fig = plt.figure(figsize=(18, 12))
+    
+    # Plot each chart in its own subplot
+    for i, key in enumerate(chart_keys):
+        df = display_dfs[key]
+        
+        # Calculate row and column position
+        row = i // 3
+        col = i % 3
+        
+        # Create subplot
+        ax = fig.add_subplot(2, 3, i+1)
+        
+        # Format data for plotting
+        # Ensure the DataFrame has the required OHLC columns
+        required_cols = ['open', 'high', 'low', 'close']
+        if all(col in df.columns for col in required_cols):
+            # Create OHLC candlestick chart
+            if 'time' in df.columns:
+                x = range(len(df))
+                
+                # Draw candlesticks
+                width = 0.6
+                width2 = width / 2
+                
+                up = df[df.close >= df.open]
+                down = df[df.close < df.open]
+                
+                # Draw up candles - bright green for dark mode
+                if not up.empty:
+                    ax.bar(x=up.index, height=up.close-up.open, bottom=up.open, 
+                           width=width, color='#00ff00', alpha=0.7)
+                    ax.bar(x=up.index, height=up.high-up.close, bottom=up.close, 
+                           width=width2, color='#00ff00', alpha=0.7)
+                    ax.bar(x=up.index, height=up.open-up.low, bottom=up.low, 
+                           width=width2, color='#00ff00', alpha=0.7)
+                
+                # Draw down candles - bright red for dark mode
+                if not down.empty:
+                    ax.bar(x=down.index, height=down.open-down.close, bottom=down.close, 
+                           width=width, color='#ff3333', alpha=0.7)
+                    ax.bar(x=down.index, height=down.high-down.open, bottom=down.open, 
+                           width=width2, color='#ff3333', alpha=0.7)
+                    ax.bar(x=down.index, height=down.close-down.low, bottom=down.low, 
+                           width=width2, color='#ff3333', alpha=0.7)
+                
+                # Set x-axis ticks to show dates
+                if 'time' in df.columns:
+                    # Show both date and time instead of just date
+                    date_time_labels = [str(d) for d in df['time']]
+                    ax.set_xticks(range(len(df)))
+                    ax.set_xticklabels(date_time_labels, rotation=45, fontsize=8, color='#cccccc')
+                    # Move x-labels slightly further from axis to improve visibility
+                    ax.tick_params(axis='x', pad=8)
+                
+            else:
+                # Just plot a basic chart if we don't have time data
+                ax.plot(df.close, label='Close', color='#33ccff')
+                
+            # Set title and labels
+            ax.set_title(key, color='white')
+            ax.set_ylabel('Price', color='white')
+            ax.tick_params(axis='y', colors='#cccccc')
+            ax.grid(True, color='#555555', linestyle='-', linewidth=0.5, alpha=0.7)
+            
+        else:
+            ax.text(0.5, 0.5, f"Missing OHLC data for {key}", 
+                    ha='center', va='center', fontsize=12, color='white')
+    
+    # Adjust layout with more space for x-axis labels and no space for title
+    plt.tight_layout(pad=2.5)
+    plt.subplots_adjust(bottom=0.15)
+    
+    # Show the plot
+    plt.show()
