@@ -256,3 +256,42 @@ def graph_display_dataframes(display_dfs):
     
     # Show the plot
     plt.show()
+
+
+def filter_dataframes_before_date(dfs, start_date, num_bars):
+    """
+    Filter dataframes to get data BEFORE a specified start date.
+    
+    Args:
+        dfs: Dictionary of dataframes to filter
+        start_date: The cutoff date (will include data on or before this date)
+        num_bars: Number of bars to get before start_date
+        
+    Returns:
+        Dictionary of filtered dataframes
+    """
+    print(f"\nFiltering dataframes to get {num_bars} bars before {start_date}...")
+    
+    # Create a deep copy to avoid modifying the original
+    filtered_dfs = {}
+    
+    # Convert start_date to pandas datetime if it's a string
+    if isinstance(start_date, str):
+        start_date = pd.to_datetime(start_date)
+    
+    # Process each dataframe
+    for key, df in dfs.items():
+        # Get the data before start_date
+        before_start = df[df['time'] <= start_date].sort_values('time', ascending=False)
+        
+        # Take the last num_bars before (and including) start_date
+        selected_data = before_start.head(num_bars).sort_values('time')
+        
+        # Update the dataframe
+        filtered_dfs[key] = selected_data.reset_index(drop=True)
+        
+        # Make sure we have at least some data
+        if len(filtered_dfs[key]) < num_bars:
+            print(f"Warning: {key} has only {len(filtered_dfs[key])} rows before {start_date}, which is less than the requested {num_bars}")
+    
+    return filtered_dfs
