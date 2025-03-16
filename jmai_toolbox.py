@@ -50,17 +50,6 @@ def get_day_of_week_num(date_input: Union[str, datetime.date, datetime.datetime]
 
 
 def load_currency_pairs(currency_pairs, timeframes, pickle_dir):
-    """
-    Load currency pairs from pickle files.
-    
-    Args:
-        currency_pairs: List of currency pairs to load
-        timeframes: List of timeframes to load
-        pickle_dir: Directory containing pickle files
-        
-    Returns:
-        Dictionary of DataFrames containing forex data
-    """
     print(f"Loading currency pairs from pickle files...")
     start_time = time.time()
     
@@ -106,16 +95,6 @@ def load_currency_pairs(currency_pairs, timeframes, pickle_dir):
 
 
 def create_display_dataframes(dfs, num_bars=20):
-    """
-    Create display dataframes containing the specified number of bars for each currency pair.
-    
-    Args:
-        dfs: Dictionary of DataFrames containing forex data
-        num_bars: Number of bars to include in each display DataFrame
-        
-    Returns:
-        Dictionary of display DataFrames
-    """
     print(f"\nCreating display dataframes with {num_bars} bars each...")
     
     # Create empty dictionary to store display DataFrames
@@ -136,13 +115,6 @@ def create_display_dataframes(dfs, num_bars=20):
 
 
 def display_currency_pairs(display_dfs, rows=None):
-    """
-    Display the content of each display DataFrame.
-    
-    Args:
-        display_dfs: Dictionary of display DataFrames
-        rows: Optional parameter to limit the number of rows to display (if None, displays all rows)
-    """
     if rows:
         print(f"\nDisplaying first {rows} rows of each display DataFrame:")
     else:
@@ -160,4 +132,4 @@ def display_currency_pairs(display_dfs, rows=None):
             print(df.head(rows))
         else:
             print(df)
-        print("-" * 80)
+        # print("-" * 80)
