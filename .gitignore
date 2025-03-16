@@ -30,6 +30,7 @@ ENV/
 .vscode/
 *.swp
 *.swo
+*.pkl
 *.csv
 
 # Jupyter Notebook
