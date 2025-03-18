@@ -116,12 +116,13 @@ def display_currency_pairs(display_dfs, rows=None):
         # print("-" * 80)
 
 
-def graph_display_dataframes(display_dfs):
+def graph_display_dataframes(display_dfs, fig=None):
     """
     Graph the display dataframes with 3 charts at the top and 3 at the bottom.
     
     Args:
         display_dfs: Dictionary of display dataframes to graph
+        fig: Optional matplotlib figure to plot on. If None, a new figure is created.
     """
     print("\nGenerating forex bar charts...")
     
@@ -141,7 +142,8 @@ def graph_display_dataframes(display_dfs):
     plt.style.use('dark_background')
     
     # Define subplot layout - 2 rows, 3 columns
-    fig = plt.figure(figsize=(18, 12))
+    if fig is None:
+        fig = plt.figure(figsize=(18, 12))
     
     # Plot each chart in its own subplot
     for i, key in enumerate(chart_keys):
