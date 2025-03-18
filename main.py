@@ -6,7 +6,7 @@ from jmai_toolbox import get_day_of_week_num, load_currency_pairs, display_curre
 from datetime import datetime, timedelta
 
 # Start date from where the display dataframes should start getting data
-START_DATE = '2025-02-01 00:00'
+START_DATE = '2025-01-06 00:00'
 
 # Number of bars to plot for each timeframe
 NUM_BARS_TO_PLOT = 100
@@ -99,8 +99,8 @@ try:
         # Pause to allow the GUI to update and to control animation speed
         plt.pause(0.5)
         
-        # Increment the date by 1 day
-        current_date += timedelta(days=1)
+        # Increment the date by 1 minute
+        current_date += timedelta(minutes=1)
         
         # Process any pending GUI events
         fig.canvas.flush_events()
