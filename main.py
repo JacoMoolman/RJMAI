@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import time
 import matplotlib.pyplot as plt
-from jmai_toolbox import get_day_of_week_num, create_display_dataframes, load_currency_pairs, display_currency_pairs, graph_display_dataframes, filter_dataframes_before_date
+from jmai_toolbox import get_day_of_week_num, load_currency_pairs, display_currency_pairs, graph_display_dataframes, filter_dataframes_before_date
 
 # Start date from where the display dataframes should start getting data
 START_DATE = '2025-02-01 00:00'
@@ -51,11 +51,12 @@ def add_day_of_week_to_dataframes(dfs):
 # Load all currency pairs
 dataframes = load_currency_pairs(CURRENCY_PAIRS, TIMEFRAMES, PICKLE_DIR)
 
-# Filter dataframes to get data BEFORE START_DATE for the specified number of bars
-dataframes_filtered = filter_dataframes_before_date(dataframes, START_DATE, NUM_BARS_TO_PLOT)
 
-# Create display dataframes with the filtered data
-display_dataframes = create_display_dataframes(dataframes_filtered, NUM_BARS_TO_PLOT)
+
+#LOOP FROM HERE
+
+# Filter dataframes to get data BEFORE START_DATE for the specified number of bars
+display_dataframes = filter_dataframes_before_date(dataframes, START_DATE, NUM_BARS_TO_PLOT)
 
 # Add day of week to all dataframes
 # dataframes = add_day_of_week_to_dataframes(display_dataframes)
@@ -65,4 +66,6 @@ display_currency_pairs(display_dataframes, rows=NUM_BARS_TO_PLOT)
 
 # Graph the display dataframes with 3 charts at top and 3 at bottom
 graph_display_dataframes(display_dataframes)
+
+### END LOOP
 #####MAIN#####

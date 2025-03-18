@@ -95,26 +95,6 @@ def load_currency_pairs(currency_pairs, timeframes, pickle_dir):
     return dfs
 
 
-def create_display_dataframes(dfs, num_bars=20):
-    print(f"\nCreating display dataframes with {num_bars} bars each...")
-    
-    # Create empty dictionary to store display DataFrames
-    display_dfs = {}
-    
-    # Check if any DataFrames were loaded
-    if not dfs:
-        print("No DataFrames to process!")
-        return display_dfs
-    
-    # Create display DataFrame for each currency pair
-    for pair_timeframe, df in dfs.items():
-        # Copy the first num_bars rows to the display DataFrame
-        display_dfs[pair_timeframe] = df.head(num_bars).copy()
-        print(f"Created display DataFrame for {pair_timeframe} with {len(display_dfs[pair_timeframe])} bars")
-    
-    return display_dfs
-
-
 def display_currency_pairs(display_dfs, rows=None):
     if rows:
         print(f"\nDisplaying first {rows} rows of each display DataFrame:")
