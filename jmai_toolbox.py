@@ -242,11 +242,12 @@ def graph_display_dataframes(display_dfs, fig=None):
 
 def filter_dataframes_before_date(dfs, start_date, num_bars):
     """
-    Filter dataframes to get data BEFORE a specified start date.
+    Filter dataframes to get data BEFORE a specified start date, ensuring higher timeframes
+    don't reveal future information about lower timeframes.
     
     Args:
         dfs: Dictionary of dataframes to filter
-        start_date: The cutoff date (will include data on or before this date)
+        start_date: The cutoff date (only data that is fully completed by this date will be included)
         num_bars: Number of bars to get before start_date
         
     Returns:
@@ -263,17 +264,85 @@ def filter_dataframes_before_date(dfs, start_date, num_bars):
     
     # Process each dataframe
     for key, df in dfs.items():
-        # Get the data before start_date
-        before_start = df[df['time'] <= start_date].sort_values('time', ascending=False)
+        if df.empty:
+            filtered_dfs[key] = df.copy()
+            continue
+            
+        # Extract timeframe from the key (e.g., 'AUDUSD_M5' -> 'M5')
+        timeframe = key.split('_')[-1] if '_' in key else None
         
-        # Take the last num_bars before (and including) start_date
-        selected_data = before_start.head(num_bars).sort_values('time')
+        # Calculate the adjusted cutoff time based on timeframe to prevent future information leakage
+        cutoff_time = start_date
+        
+        if timeframe:
+            # Calculate the end time of the bar that would contain the start_date
+            if timeframe == 'M1':
+                # For M1, the bar ends at the next minute
+                bar_duration = pd.Timedelta(minutes=1)
+            elif timeframe == 'M5':
+                bar_duration = pd.Timedelta(minutes=5)
+            elif timeframe == 'M15':
+                bar_duration = pd.Timedelta(minutes=15)
+            elif timeframe == 'M30':
+                bar_duration = pd.Timedelta(minutes=30)
+            elif timeframe == 'H1':
+                bar_duration = pd.Timedelta(hours=1)
+            elif timeframe == 'H4':
+                bar_duration = pd.Timedelta(hours=4)
+            elif timeframe == 'D1':
+                bar_duration = pd.Timedelta(days=1)
+            else:
+                # Default to no adjustment
+                bar_duration = pd.Timedelta(minutes=0)
+            
+            # Calculate when the current bar started
+            if timeframe.startswith('M'):  # Minute-based timeframes
+                minutes = int(timeframe[1:]) if len(timeframe) > 1 else 1
+                # Calculate the start of the current bar
+                bar_start = pd.Timestamp(
+                    year=start_date.year, 
+                    month=start_date.month, 
+                    day=start_date.day,
+                    hour=start_date.hour, 
+                    minute=(start_date.minute // minutes) * minutes
+                )
+                # Only use bars that are fully completed
+                cutoff_time = bar_start
+            elif timeframe.startswith('H'):  # Hour-based timeframes
+                hours = int(timeframe[1:]) if len(timeframe) > 1 else 1
+                # Calculate the start of the current bar
+                bar_start = pd.Timestamp(
+                    year=start_date.year, 
+                    month=start_date.month, 
+                    day=start_date.day,
+                    hour=(start_date.hour // hours) * hours, 
+                    minute=0
+                )
+                # Only use bars that are fully completed
+                cutoff_time = bar_start
+            elif timeframe == 'D1':  # Daily timeframe
+                bar_start = pd.Timestamp(
+                    year=start_date.year, 
+                    month=start_date.month, 
+                    day=start_date.day,
+                    hour=0, 
+                    minute=0
+                )
+                # Only use bars that are fully completed
+                cutoff_time = bar_start
+        
+        # Get the data strictly before the adjusted cutoff time
+        # This ensures we only show bars that are fully completed as of the current time
+        before_cutoff = df[df['time'] < cutoff_time].sort_values('time', ascending=False)
+        
+        # Take the last num_bars before the cutoff
+        selected_data = before_cutoff.head(num_bars).sort_values('time')
         
         # Update the dataframe
         filtered_dfs[key] = selected_data.reset_index(drop=True)
         
         # Make sure we have at least some data
         if len(filtered_dfs[key]) < num_bars:
-            print(f"Warning: {key} has only {len(filtered_dfs[key])} rows before {start_date}, which is less than the requested {num_bars}")
+            print(f"Warning: {key} has only {len(filtered_dfs[key])} rows before {cutoff_time}, which is less than the requested {num_bars}")
     
     return filtered_dfs
