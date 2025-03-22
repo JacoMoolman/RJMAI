@@ -390,3 +390,71 @@ def filter_dataframes_before_date(dfs, start_date, num_bars):
             print(f"Warning: {key} has only {len(filtered_dfs[key])} rows before {cutoff_time}, which is less than the requested {num_bars}")
     
     return filtered_dfs
+
+
+def normalize_dataframes_separately(display_dfs):
+    """
+    Normalize each timeframe of each currency pair separately.
+    
+    This function takes the display_dataframes dictionary and normalizes
+    the OHLC values of each timeframe for each currency pair independently.
+    
+    Args:
+        display_dfs: Dictionary of dataframes to normalize, where keys are in 
+                    the format 'CURRENCY_TIMEFRAME' (e.g., 'EURUSD_M5')
+    
+    Returns:
+        Dictionary of normalized dataframes with the same structure as the input
+    """
+    print("\nNormalizing each timeframe of each currency pair separately...")
+    
+    # Create a deep copy to avoid modifying the original
+    normalized_dfs = {}
+    
+    # Process each dataframe separately
+    for key, df in display_dfs.items():
+        if df.empty:
+            normalized_dfs[key] = df.copy()
+            continue
+        
+        # Create a copy of the dataframe
+        normalized_df = df.copy()
+        
+        # Normalize the OHLC columns for this specific currency pair and timeframe
+        if all(col in df.columns for col in ['open', 'high', 'low', 'close']):
+            # Get min and max values for OHLC columns in this specific dataframe
+            min_val = min(
+                df['open'].min(),
+                df['high'].min(),
+                df['low'].min(),
+                df['close'].min()
+            )
+            
+            max_val = max(
+                df['open'].max(),
+                df['high'].max(),
+                df['low'].max(),
+                df['close'].max()
+            )
+            
+            # Avoid division by zero
+            range_val = max_val - min_val
+            if range_val == 0:
+                print(f"Warning: {key} has no price variation. Skipping normalization.")
+                normalized_dfs[key] = df.copy()
+                continue
+            
+            # Normalize each OHLC column independently using min-max normalization
+            normalized_df['open'] = (df['open'] - min_val) / range_val
+            normalized_df['high'] = (df['high'] - min_val) / range_val
+            normalized_df['low'] = (df['low'] - min_val) / range_val
+            normalized_df['close'] = (df['close'] - min_val) / range_val
+            
+            print(f"Normalized {key} - Range: [{min_val:.5f}, {max_val:.5f}]")
+        else:
+            print(f"Warning: {key} missing required OHLC columns. Skipping normalization.")
+        
+        # Store the normalized dataframe
+        normalized_dfs[key] = normalized_df
+    
+    return normalized_dfs

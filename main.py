@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import time
 import matplotlib.pyplot as plt
-from jmai_toolbox import get_day_of_week_num, load_currency_pairs, display_currency_pairs, graph_display_dataframes, filter_dataframes_before_date
+from jmai_toolbox import get_day_of_week_num, load_currency_pairs, display_currency_pairs, graph_display_dataframes, filter_dataframes_before_date, normalize_dataframes_separately
 from datetime import datetime, timedelta
 
 # Start date from where the display dataframes should start getting data
@@ -81,21 +81,23 @@ try:
         current_date_str = current_date.strftime('%Y-%m-%d %H:%M')
         print(f"\nProcessing date: {current_date_str}")
         
-        # Filter dataframes to get data BEFORE current_date for the specified number of bars
+        #EXTRACT DATES
         display_dataframes = filter_dataframes_before_date(dataframes, current_date, NUM_BARS_TO_PLOT)
         
-        # Graph the display dataframes - one window per currency pair with all timeframes
-        # Pass the current date to show in the title
+        #NORMALIZE
+        display_dataframes = normalize_dataframes_separately(display_dataframes)
+        
+        #GRAPH
         figures = graph_display_dataframes(display_dataframes, figures, current_date)
         
-        # Pause to allow the GUI to update and to control animation speed
+        #PAUSE
         plt.pause(0.5)
         
-        # Increment the date by 1 minute
+        #PLUS ONE MINUTE
         current_date += timedelta(minutes=1)
         
 except KeyboardInterrupt:
-    print("\nAnimation stopped by user")
+    print("\nAnimation stopped")
 except Exception as e:
     print(f"\nAnimation error: {e}")
 finally:
