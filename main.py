@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 START_DATE = '2024-01-08 00:00'
 
 # Number of bars to plot for each timeframe
-NUM_BARS_TO_PLOT = 100
+NUM_BARS_TO_PLOT = 10
 
 # Dictionary to store all DataFrames
 dataframes = {}
@@ -24,7 +24,7 @@ PICKLE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "picklefil
 CURRENCY_PAIRS = [
     'AUDUSD',
     'EURUSD',
-    # 'GBPUSD',
+    'GBPUSD',
     # 'USDCAD',
     # 'USDCHF',
     # 'USDJPY'
