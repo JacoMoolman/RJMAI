@@ -51,7 +51,7 @@ def get_day_of_week_num(date_input: Union[str, datetime.date, datetime.datetime]
 
 
 def load_currency_pairs(currency_pairs, timeframes, pickle_dir):
-    print(f"Loading currency pairs from pickle files...")
+    # print(f"Loading currency pairs from pickle files...")
     start_time = time.time()
     
     # Create empty dictionary to store DataFrames
@@ -82,7 +82,7 @@ def load_currency_pairs(currency_pairs, timeframes, pickle_dir):
                     # Store DataFrame in dictionary
                     dfs[pair_timeframe] = df
                     loaded_count += 1
-                    print(f"Loaded {pair_timeframe} - {len(df)} rows")
+                    # print(f"Loaded {pair_timeframe} - {len(df)} rows")
                 except Exception as e:
                     print(f"Error loading {pair_timeframe}: {e}")
             else:
@@ -90,7 +90,7 @@ def load_currency_pairs(currency_pairs, timeframes, pickle_dir):
     
     # Calculate elapsed time
     elapsed_time = time.time() - start_time
-    print(f"Loaded {loaded_count} DataFrames in {elapsed_time:.2f} seconds")
+    # print(f"Loaded {loaded_count} DataFrames in {elapsed_time:.2f} seconds")
     
     return dfs
 
@@ -297,7 +297,7 @@ def filter_dataframes_before_date(dfs, start_date, num_bars):
     Returns:
         Dictionary of filtered dataframes
     """
-    print(f"\nFiltering dataframes to get {num_bars} bars before {start_date}...")
+    # print(f"\nFiltering dataframes to get {num_bars} bars before {start_date}...")
     
     # Create a deep copy to avoid modifying the original
     filtered_dfs = {}
@@ -407,7 +407,7 @@ def normalize_dataframes_separately(display_dfs):
     Returns:
         Dictionary of normalized dataframes with the same structure as the input
     """
-    print("\nNormalizing each timeframe of each currency pair separately...")
+    # print("\nNormalizing each timeframe of each currency pair separately...")
     
     # Create a deep copy to avoid modifying the original
     normalized_dfs = {}
@@ -543,7 +543,7 @@ def display_flat_dataframes(flat_dfs):
     Args:
         flat_dfs: Dictionary of flattened dataframes, one per currency pair
     """
-    print("\nDisplaying flattened dataframes:")
+    # print("\nDisplaying flattened dataframes:")
     
     # Check if any DataFrames were created
     if not flat_dfs:
@@ -552,10 +552,119 @@ def display_flat_dataframes(flat_dfs):
     
     # Display each DataFrame
     for currency_pair, df in flat_dfs.items():
-        print(f"\n{currency_pair} Flat DataFrame:")
+        # print(f"\n{currency_pair} Flat DataFrame:")
         
         # Transpose the dataframe for cleaner display in console
         # This will show each indicator as a row instead of a column
         transposed = df.T
         transposed.columns = ['Value']
         print(transposed)
+
+
+def add_day_of_week_to_dataframes(dfs):
+    """
+    Adds a 'day_of_week' column to each dataframe in the dictionary 
+    using the 'time' column and the get_day_of_week_num function.
+    
+    Args:
+        dfs: Dictionary of dataframes where keys are in 
+            the format 'CURRENCY_TIMEFRAME' (e.g., 'EURUSD_M5')
+            
+    Returns:
+        Dictionary of dataframes with the day_of_week column added
+    """
+    for key in dfs:
+        dfs[key]['day_of_week'] = dfs[key]['time'].apply(get_day_of_week_num)
+    return dfs
+
+
+def setup_matplotlib_visualization(enable_interactive=True):
+    """
+    Set up matplotlib visualization settings for forex data display.
+    
+    Args:
+        enable_interactive: If True, enable interactive mode for real-time updates.
+                           If False, disable interactive mode.
+    """
+    # Set the style to dark background for all plots
+    plt.style.use('dark_background')
+    
+    # Enable or disable interactive mode based on parameter
+    if enable_interactive:
+        plt.ion()  # Enable interactive mode for real-time updates
+    else:
+        plt.ioff()  # Disable interactive mode
+
+
+def graph_flat_dataframe(flat_df, currency_pair, current_date=None):
+    print(f"\nConverting flat dataframe back to graphable format for {currency_pair}...")
+    
+    # Print column names for debugging
+    print(f"Columns in flat_df: {flat_df.columns.tolist()}")
+    
+    # Group columns by timeframe
+    timeframe_data = {}
+    for col in flat_df.columns:
+        try:
+            # Parse column name (format: timeframe_field_idx)
+            parts = col.split('_')
+            
+            # Check if the column follows the expected format
+            if len(parts) >= 3 and parts[-1].isdigit():
+                timeframe = parts[0]
+                # The field might contain underscores, so join all middle parts
+                field = '_'.join(parts[1:-1])
+                idx = int(parts[-1])
+                
+                # Create nested dictionaries as needed
+                if timeframe not in timeframe_data:
+                    timeframe_data[timeframe] = {}
+                
+                if idx not in timeframe_data[timeframe]:
+                    timeframe_data[timeframe][idx] = {}
+                
+                # Store the value
+                timeframe_data[timeframe][idx][field] = flat_df[col].iloc[0]
+            else:
+                print(f"Skipping column '{col}' - doesn't match expected format timeframe_field_idx")
+        except Exception as e:
+            print(f"Error processing column '{col}': {str(e)}")
+    
+    # Convert back to regular dataframes
+    display_dfs = {}
+    for timeframe, indices in timeframe_data.items():
+        # Create a list of dictionaries for each index
+        rows = []
+        for idx, fields in sorted(indices.items()):
+            rows.append(fields)
+        
+        # Create a dataframe from the rows
+        if rows:
+            df = pd.DataFrame(rows)
+            
+            # Check if we have the required OHLC columns
+            required_cols = ['open', 'high', 'low', 'close']
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            
+            if missing_cols:
+                print(f"Warning: Missing required columns for {timeframe}: {missing_cols}")
+                continue
+            
+            # Add a dummy time column for graphing purposes
+            df['time'] = pd.date_range(start=pd.to_datetime(current_date) if current_date else 'today', 
+                                       periods=len(df), freq='min')
+            
+            # Store in the display_dfs dictionary with the proper key format
+            display_dfs[f"{currency_pair}_{timeframe}"] = df
+    
+    if not display_dfs:
+        print(f"Warning: No valid dataframes could be created for {currency_pair}")
+        return {}
+    
+    # Set up matplotlib visualization
+    setup_matplotlib_visualization(enable_interactive=True)
+    
+    # Graph the display dataframes
+    figures = graph_display_dataframes(display_dfs)
+    
+    return figures
