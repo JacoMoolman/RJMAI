@@ -6,7 +6,7 @@ from jmai_toolbox import get_day_of_week_num, load_currency_pairs, display_curre
 from datetime import datetime, timedelta
 
 # Start date from where the display dataframes should start getting data
-START_DATE = '2025-01-06 00:00'
+START_DATE = '2024-01-08 00:00'
 
 # Number of bars to plot for each timeframe
 NUM_BARS_TO_PLOT = 100
