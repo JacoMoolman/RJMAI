@@ -85,15 +85,8 @@ try:
         display_dataframes = filter_dataframes_before_date(dataframes, current_date, NUM_BARS_TO_PLOT)
         
         # Graph the display dataframes - one window per currency pair with all timeframes
-        figures = graph_display_dataframes(display_dataframes, figures)
-        
-        # Add the current date to each figure's title
-        for pair, fig in figures.items():
-            fig.suptitle(f"{pair} - Data as of {current_date_str}", fontsize=14, color='white')
-            # Force a draw of the figure
-            fig.canvas.draw()
-            # Process any pending GUI events for this figure
-            fig.canvas.flush_events()
+        # Pass the current date to show in the title
+        figures = graph_display_dataframes(display_dataframes, figures, current_date)
         
         # Pause to allow the GUI to update and to control animation speed
         plt.pause(0.5)

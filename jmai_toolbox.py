@@ -116,7 +116,7 @@ def display_currency_pairs(display_dfs, rows=None):
         # print("-" * 80)
 
 
-def graph_display_dataframes(display_dfs, figs=None):
+def graph_display_dataframes(display_dfs, figs=None, current_date=None):
     """
     Graph the display dataframes with one window per currency pair.
     Each window will contain multiple charts for the different timeframes of that currency pair.
@@ -124,6 +124,7 @@ def graph_display_dataframes(display_dfs, figs=None):
     Args:
         display_dfs: Dictionary of display dataframes to graph
         figs: Optional dictionary of existing figures to plot on. If None, new figures are created.
+        current_date: Optional current date to display in the figure title
     """
     print("\nGenerating forex bar charts...")
     
@@ -175,6 +176,11 @@ def graph_display_dataframes(display_dfs, figs=None):
             figs[currency_pair].canvas.manager.set_window_title(f"{currency_pair} Charts")
         else:
             figs[currency_pair].clear()
+        
+        # Set the figure title with current date if provided
+        if current_date:
+            current_date_str = current_date.strftime('%Y-%m-%d %H:%M') if hasattr(current_date, 'strftime') else str(current_date)
+            figs[currency_pair].suptitle(f"{currency_pair} - Data as of {current_date_str}", fontsize=14, color='white')
         
         # Create subplots for each timeframe
         for i, key in enumerate(timeframe_keys):
@@ -269,6 +275,10 @@ def graph_display_dataframes(display_dfs, figs=None):
         # Adjust layout with more space for x-axis labels
         figs[currency_pair].tight_layout(pad=2.5)
         figs[currency_pair].subplots_adjust(bottom=0.15)
+        
+        # Draw the figure and process events
+        figs[currency_pair].canvas.draw()
+        figs[currency_pair].canvas.flush_events()
     
     # Return the dictionary of figures
     return figs
