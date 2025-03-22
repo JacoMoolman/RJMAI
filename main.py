@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 START_DATE = '2024-01-08 00:00'
 
 # Number of bars to plot for each timeframe
-NUM_BARS_TO_PLOT = 10
+NUM_BARS_TO_PLOT = 100
 
 # Dictionary to store all DataFrames
 dataframes = {}

@@ -397,7 +397,8 @@ def normalize_dataframes_separately(display_dfs):
     Normalize each timeframe of each currency pair separately.
     
     This function takes the display_dataframes dictionary and normalizes
-    the OHLC values of each timeframe for each currency pair independently.
+    the OHLC values and tick_volume of each timeframe for each currency pair independently.
+    Spread values are kept as is.
     
     Args:
         display_dfs: Dictionary of dataframes to normalize, where keys are in 
@@ -440,20 +441,29 @@ def normalize_dataframes_separately(display_dfs):
             # Avoid division by zero
             range_val = max_val - min_val
             if range_val == 0:
-                print(f"Warning: {key} has no price variation. Skipping normalization.")
-                normalized_dfs[key] = df.copy()
-                continue
-            
-            # Normalize each OHLC column independently using min-max normalization
+                range_val = 1
+                
+            # Normalize OHLC columns to range [0, 1]
             normalized_df['open'] = (df['open'] - min_val) / range_val
             normalized_df['high'] = (df['high'] - min_val) / range_val
             normalized_df['low'] = (df['low'] - min_val) / range_val
             normalized_df['close'] = (df['close'] - min_val) / range_val
-            
-            print(f"Normalized {key} - Range: [{min_val:.5f}, {max_val:.5f}]")
-        else:
-            print(f"Warning: {key} missing required OHLC columns. Skipping normalization.")
         
+        # Normalize tick_volume if it exists
+        if 'tick_volume' in df.columns and not df['tick_volume'].empty:
+            min_tick = df['tick_volume'].min()
+            max_tick = df['tick_volume'].max()
+            
+            # Avoid division by zero
+            range_tick = max_tick - min_tick
+            if range_tick == 0:
+                range_tick = 1
+                
+            # Normalize tick_volume to range [0, 1]
+            normalized_df['tick_volume'] = (df['tick_volume'] - min_tick) / range_tick
+        
+        # Note: Spread is intentionally not normalized and kept as is
+            
         # Store the normalized dataframe
         normalized_dfs[key] = normalized_df
     
