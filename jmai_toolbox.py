@@ -458,3 +458,94 @@ def normalize_dataframes_separately(display_dfs):
         normalized_dfs[key] = normalized_df
     
     return normalized_dfs
+
+
+def create_flat_dataframes(display_dfs):
+    """
+    Create flattened 1D dataframes from the display dataframes.
+    
+    This function takes the display_dataframes dictionary and creates a flat representation
+    with one dataframe per currency pair. Each dataframe contains all timeframes with columns
+    prefixed by the timeframe name and numbered according to the row index
+    (e.g., M1_open_0, M1_close_0, M1_open_1, M1_close_1, etc.)
+    
+    Args:
+        display_dfs: Dictionary of display dataframes where keys are in 
+                    the format 'CURRENCY_TIMEFRAME' (e.g., 'EURUSD_M5')
+    
+    Returns:
+        Dictionary of flattened dataframes, one per currency pair
+    """
+    # Check if any DataFrames were loaded
+    if not display_dfs:
+        print("No display DataFrames to flatten!")
+        return {}
+    
+    # Group the keys by currency pair
+    pair_to_timeframes = {}
+    for key in display_dfs.keys():
+        # Split the key into currency pair and timeframe (e.g., "EURUSD_H1" -> "EURUSD" and "H1")
+        parts = key.split('_')
+        if len(parts) >= 2:
+            currency_pair = parts[0]
+            timeframe = '_'.join(parts[1:])  # Handle case where timeframe might contain underscores
+            
+            if currency_pair not in pair_to_timeframes:
+                pair_to_timeframes[currency_pair] = []
+            
+            pair_to_timeframes[currency_pair].append((timeframe, key))
+    
+    # Create a dictionary to store the flat dataframes
+    flat_dfs = {}
+    
+    # Process each currency pair
+    for currency_pair, timeframe_keys in pair_to_timeframes.items():
+        # Create a dictionary to hold the flattened data
+        flat_data = {}
+        
+        # Process each timeframe for this currency pair
+        for timeframe, full_key in timeframe_keys:
+            df = display_dfs[full_key]
+            
+            # Extract the key columns we want to keep
+            columns_to_keep = ['open', 'high', 'low', 'close', 'tick_volume', 'spread']
+            
+            # Add each column to the flat data with timeframe prefix and row index
+            for idx, row in df.iterrows():
+                for col in columns_to_keep:
+                    if col in df.columns:
+                        # Use the row index to number each entry
+                        flat_data[f"{timeframe}_{col}_{idx}"] = row[col] if not pd.isna(row[col]) else None
+        
+        # Create a dataframe from the flattened data
+        flat_df = pd.DataFrame([flat_data])
+        
+        # Store in the result dictionary
+        flat_dfs[currency_pair] = flat_df
+    
+    return flat_dfs
+
+
+def display_flat_dataframes(flat_dfs):
+    """
+    Display the flattened dataframes in the console.
+    
+    Args:
+        flat_dfs: Dictionary of flattened dataframes, one per currency pair
+    """
+    print("\nDisplaying flattened dataframes:")
+    
+    # Check if any DataFrames were created
+    if not flat_dfs:
+        print("No flattened DataFrames to display!")
+        return
+    
+    # Display each DataFrame
+    for currency_pair, df in flat_dfs.items():
+        print(f"\n{currency_pair} Flat DataFrame:")
+        
+        # Transpose the dataframe for cleaner display in console
+        # This will show each indicator as a row instead of a column
+        transposed = df.T
+        transposed.columns = ['Value']
+        print(transposed)
