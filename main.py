@@ -23,7 +23,7 @@ PICKLE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "picklefil
 # List of all currency pairs (uncomment/comment to include/exclude)
 CURRENCY_PAIRS = [
     'AUDUSD',
-    # 'EURUSD',
+    'EURUSD',
     # 'GBPUSD',
     # 'USDCAD',
     # 'USDCHF',
@@ -71,8 +71,8 @@ plt.style.use('dark_background')
 # Enable interactive mode for real-time updates
 plt.ion()
 
-# Create the figure 
-fig = plt.figure(figsize=(18, 12))
+# Dictionary to store figures for each currency pair
+figures = {}
 
 #LOOP FROM HERE
 try:
@@ -84,26 +84,22 @@ try:
         # Filter dataframes to get data BEFORE current_date for the specified number of bars
         display_dataframes = filter_dataframes_before_date(dataframes, current_date, NUM_BARS_TO_PLOT)
         
-        # Clear the figure for the new frame
-        plt.clf()
+        # Graph the display dataframes - one window per currency pair with all timeframes
+        figures = graph_display_dataframes(display_dataframes, figures)
         
-        # Display the current date on the figure
-        plt.suptitle(f"Data as of {current_date_str}", fontsize=16, color='white')
-        
-        # Graph the display dataframes with 3 charts at top and 3 at bottom
-        graph_display_dataframes(display_dataframes, fig)
-        
-        # Force a draw of the figure
-        plt.draw()
+        # Add the current date to each figure's title
+        for pair, fig in figures.items():
+            fig.suptitle(f"{pair} - Data as of {current_date_str}", fontsize=14, color='white')
+            # Force a draw of the figure
+            fig.canvas.draw()
+            # Process any pending GUI events for this figure
+            fig.canvas.flush_events()
         
         # Pause to allow the GUI to update and to control animation speed
         plt.pause(0.5)
         
         # Increment the date by 1 minute
         current_date += timedelta(minutes=1)
-        
-        # Process any pending GUI events
-        fig.canvas.flush_events()
         
 except KeyboardInterrupt:
     print("\nAnimation stopped by user")
@@ -113,9 +109,8 @@ finally:
     # Turn off interactive mode when done
     plt.ioff()
     
-    # Keep the window open after the animation completes
-    print("\nAnimation complete. Close the plot window to exit.")
-    plt.show(block=True)
+    # Inform user the program is ending
+    print("\nAnimation ended. Exiting program.")
 
 ### END LOOP
 #####MAIN#####

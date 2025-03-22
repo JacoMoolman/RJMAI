@@ -116,128 +116,162 @@ def display_currency_pairs(display_dfs, rows=None):
         # print("-" * 80)
 
 
-def graph_display_dataframes(display_dfs, fig=None):
+def graph_display_dataframes(display_dfs, figs=None):
     """
-    Graph the display dataframes with 3 charts at the top and 3 at the bottom.
+    Graph the display dataframes with one window per currency pair.
+    Each window will contain multiple charts for the different timeframes of that currency pair.
     
     Args:
         display_dfs: Dictionary of display dataframes to graph
-        fig: Optional matplotlib figure to plot on. If None, a new figure is created.
+        figs: Optional dictionary of existing figures to plot on. If None, new figures are created.
     """
     print("\nGenerating forex bar charts...")
     
     # Check if any DataFrames were loaded
     if not display_dfs:
         print("No display DataFrames to graph!")
-        return
+        return {}
     
-    # Get the keys from the display_dfs dictionary
-    keys = list(display_dfs.keys())
+    # Group the keys by currency pair
+    pair_to_timeframes = {}
+    for key in display_dfs.keys():
+        # Split the key into currency pair and timeframe (e.g., "EURUSD_H1" -> "EURUSD" and "H1")
+        parts = key.split('_')
+        if len(parts) >= 2:
+            currency_pair = parts[0]
+            timeframe = '_'.join(parts[1:])  # Handle case where timeframe might contain underscores
+            
+            if currency_pair not in pair_to_timeframes:
+                pair_to_timeframes[currency_pair] = []
+            
+            pair_to_timeframes[currency_pair].append(key)
     
-    # Only process up to 6 charts
-    chart_keys = keys[:6]
-    num_charts = len(chart_keys)
+    # Create or use dictionary to store figures
+    if figs is None:
+        figs = {}
     
     # Set dark mode style
     plt.style.use('dark_background')
     
-    # Define subplot layout - 2 rows, 3 columns
-    if fig is None:
-        fig = plt.figure(figsize=(18, 12))
-    
-    # Plot each chart in its own subplot
-    for i, key in enumerate(chart_keys):
-        df = display_dfs[key]
+    # For each currency pair, create or update a figure with subplots for each timeframe
+    for currency_pair, timeframe_keys in pair_to_timeframes.items():
+        # Sort timeframe keys to ensure consistent layout
+        timeframe_keys.sort()
         
-        # Calculate row and column position
-        row = i // 3
-        col = i % 3
+        # Calculate the optimal subplot layout based on number of timeframes
+        num_timeframes = len(timeframe_keys)
+        if num_timeframes <= 3:
+            rows, cols = 1, num_timeframes
+        elif num_timeframes <= 6:
+            rows, cols = 2, 3
+        elif num_timeframes <= 9:
+            rows, cols = 3, 3
+        else:
+            rows, cols = (num_timeframes + 3) // 4, 4  # Make sure there are enough slots
         
-        # Create subplot
-        ax = fig.add_subplot(2, 3, i+1)
+        # Create or clear figure for this currency pair
+        if currency_pair not in figs:
+            figs[currency_pair] = plt.figure(figsize=(cols*4, rows*3))
+            figs[currency_pair].canvas.manager.set_window_title(f"{currency_pair} Charts")
+        else:
+            figs[currency_pair].clear()
         
-        # Format data for plotting
-        # Ensure the DataFrame has the required OHLC columns
-        required_cols = ['open', 'high', 'low', 'close']
-        if all(col in df.columns for col in required_cols):
-            # Create OHLC candlestick chart
-            if 'time' in df.columns:
-                x = range(len(df))
-                
-                # Draw candlesticks
-                width = 0.6
-                width2 = width / 2
-                
-                up = df[df.close >= df.open]
-                down = df[df.close < df.open]
-                
-                # Draw up candles - bright green for dark mode
-                if not up.empty:
-                    ax.bar(x=up.index, height=up.close-up.open, bottom=up.open, 
-                           width=width, color='#00ff00', alpha=0.7)
-                    ax.bar(x=up.index, height=up.high-up.close, bottom=up.close, 
-                           width=width2, color='#00ff00', alpha=0.7)
-                    ax.bar(x=up.index, height=up.open-up.low, bottom=up.low, 
-                           width=width2, color='#00ff00', alpha=0.7)
-                
-                # Draw down candles - bright red for dark mode
-                if not down.empty:
-                    ax.bar(x=down.index, height=down.open-down.close, bottom=down.close, 
-                           width=width, color='#ff3333', alpha=0.7)
-                    ax.bar(x=down.index, height=down.high-down.open, bottom=down.open, 
-                           width=width2, color='#ff3333', alpha=0.7)
-                    ax.bar(x=down.index, height=down.close-down.low, bottom=down.low, 
-                           width=width2, color='#ff3333', alpha=0.7)
-                
-                # Set x-axis ticks to show dates
+        # Create subplots for each timeframe
+        for i, key in enumerate(timeframe_keys):
+            if i >= rows * cols:
+                print(f"Warning: Not enough subplot space for {key}, skipping.")
+                continue
+            
+            df = display_dfs[key]
+            
+            # Create subplot
+            ax = figs[currency_pair].add_subplot(rows, cols, i+1)
+            
+            # Format data for plotting
+            # Ensure the DataFrame has the required OHLC columns
+            required_cols = ['open', 'high', 'low', 'close']
+            if all(col in df.columns for col in required_cols):
+                # Create OHLC candlestick chart
                 if 'time' in df.columns:
-                    # Only show start and end dates instead of all dates
-                    if len(df) > 0:
-                        start_date = df['time'].iloc[0]
-                        end_date = df['time'].iloc[-1]
-                        
-                        # Remove x-axis ticks completely
-                        ax.set_xticks([])
-                        
-                        # Add a text label at bottom center showing date range
-                        date_range_text = f"{start_date} to {end_date}"
-                        ax.annotate(date_range_text, 
-                                   xy=(0.5, -0.12), 
-                                   xycoords='axes fraction',
-                                   ha='center',
-                                   fontsize=10,
-                                   color='#cccccc')
+                    x = range(len(df))
                     
-                    # Hide other x-tick labels to avoid clutter
-                    ax.tick_params(axis='x', pad=8)
+                    # Draw candlesticks
+                    width = 0.6
+                    width2 = width / 2
+                    
+                    up = df[df.close >= df.open]
+                    down = df[df.close < df.open]
+                    
+                    # Draw up candles - bright green for dark mode
+                    if not up.empty:
+                        ax.bar(x=up.index, height=up.close-up.open, bottom=up.open, 
+                               width=width, color='#00ff00', alpha=0.7)
+                        ax.bar(x=up.index, height=up.high-up.close, bottom=up.close, 
+                               width=width2, color='#00ff00', alpha=0.7)
+                        ax.bar(x=up.index, height=up.open-up.low, bottom=up.low, 
+                               width=width2, color='#00ff00', alpha=0.7)
+                    
+                    # Draw down candles - bright red for dark mode
+                    if not down.empty:
+                        ax.bar(x=down.index, height=down.open-down.close, bottom=down.close, 
+                               width=width, color='#ff3333', alpha=0.7)
+                        ax.bar(x=down.index, height=down.high-down.open, bottom=down.open, 
+                               width=width2, color='#ff3333', alpha=0.7)
+                        ax.bar(x=down.index, height=down.close-down.low, bottom=down.low, 
+                               width=width2, color='#ff3333', alpha=0.7)
+                    
+                    # Set x-axis ticks to show dates
+                    if 'time' in df.columns:
+                        # Only show start and end dates instead of all dates
+                        if len(df) > 0:
+                            start_date = df['time'].iloc[0]
+                            end_date = df['time'].iloc[-1]
+                            
+                            # Remove x-axis ticks completely
+                            ax.set_xticks([])
+                            
+                            # Add a text label at bottom center showing date range
+                            date_range_text = f"{start_date} to {end_date}"
+                            ax.annotate(date_range_text, 
+                                       xy=(0.5, -0.12), 
+                                       xycoords='axes fraction',
+                                       ha='center',
+                                       fontsize=8,
+                                       color='#cccccc')
+                        
+                        # Hide other x-tick labels to avoid clutter
+                        ax.tick_params(axis='x', pad=8)
+                    
+                    # Calculate and set appropriate y-axis limits with a small margin
+                    y_min = df['low'].min()
+                    y_max = df['high'].max()
+                    y_range = y_max - y_min
+                    margin = y_range * 0.05  # 5% margin
+                    ax.set_ylim(y_min - margin, y_max + margin)
+                    
+                else:
+                    # Just plot a basic chart if we don't have time data
+                    ax.plot(df.close, label='Close', color='#33ccff')
+                    
+                # Extract timeframe from key for the title
+                timeframe = key.split('_')[1] if '_' in key else key
                 
-                # Calculate and set appropriate y-axis limits with a small margin
-                y_min = df['low'].min()
-                y_max = df['high'].max()
-                y_range = y_max - y_min
-                margin = y_range * 0.05  # 5% margin
-                ax.set_ylim(y_min - margin, y_max + margin)
+                # Set title and labels
+                ax.set_title(timeframe, color='white')
+                ax.set_ylabel('Price', color='white')
+                ax.tick_params(axis='y', colors='#cccccc')
+                ax.grid(True, color='#555555', linestyle='-', linewidth=0.5, alpha=0.7)
                 
             else:
-                # Just plot a basic chart if we don't have time data
-                ax.plot(df.close, label='Close', color='#33ccff')
-                
-            # Set title and labels
-            ax.set_title(key, color='white')
-            ax.set_ylabel('Price', color='white')
-            ax.tick_params(axis='y', colors='#cccccc')
-            ax.grid(True, color='#555555', linestyle='-', linewidth=0.5, alpha=0.7)
-            
-        else:
-            ax.text(0.5, 0.5, f"Missing OHLC data for {key}", 
-                    ha='center', va='center', fontsize=12, color='white')
+                ax.text(0.5, 0.5, f"Missing OHLC data for {key}", 
+                        ha='center', va='center', fontsize=12, color='white')
+        
+        # Adjust layout with more space for x-axis labels
+        figs[currency_pair].tight_layout(pad=2.5)
+        figs[currency_pair].subplots_adjust(bottom=0.15)
     
-    # Adjust layout with more space for x-axis labels and no space for title
-    plt.tight_layout(pad=2.5)
-    plt.subplots_adjust(bottom=0.15)
-    
-    # Show the plot
-    plt.show()
+    # Return the dictionary of figures
+    return figs
 
 
 def filter_dataframes_before_date(dfs, start_date, num_bars):
