@@ -27,15 +27,15 @@ from typing import Dict, List, Tuple
 from get_dataframe import get_dataframe
 
 # Variables from gym.py
-START_DATE = '2024-01-08 00:00'
+START_DATE = '2020-01-01 00:00'
 NUM_BARS_TO_PLOT = 100
 CURRENCY_PAIRS = [
     'AUDUSD',
     'EURUSD',
-    # 'GBPUSD',
-    # 'USDCAD',
-    # 'USDCHF',
-    # 'USDJPY'
+    'GBPUSD',
+    'USDCAD',
+    'USDCHF',
+    'USDJPY'
 ]
 
 # Constants for the trading environment
@@ -221,9 +221,8 @@ class TradingEnv(gym.Env):
     def step(self, action):
         self.step_counter += 1
         
-        # Print progress every 5 steps
-        if self.step_counter % 5 == 0:
-            print(f"{self.currency_pair} | Step {self.step_counter} | Position: {self.position} | Balance: {self.balance:.2f}")
+        # Print progress at every step
+        print(f"{self.currency_pair} | Step {self.step_counter} | Date: {self.current_date} | Position: {self.position} | Balance: {self.balance:.2f}")
         
         # Map continuous action to discrete
         discrete_action = self._map_continuous_to_discrete(action)
@@ -250,10 +249,9 @@ class TradingEnv(gym.Env):
                 action = 3  # Close position
                 self._execute_trade(action)
         
-        # Debug output
-        if self.step_counter % 10 == 0:
-            print(f"{self.currency_pair} | Step {self.step_counter}: Action={discrete_action}, Reward={reward:.4f}, PnL={self.balance:.4f}")
-            
+        # Debug output at every step with action and reward
+        print(f"{self.currency_pair} | Action={discrete_action}, Reward={reward:.4f}, PnL={self.balance:.4f}")
+        
         # Update visualization if available
         if self.visualizer is not None:
             self.visualizer.update(self.currency_pair, self.step_counter, self.balance, self.position, discrete_action)
@@ -308,10 +306,13 @@ class TrainingVisualizer:
         self.actions = {pair: [] for pair in currency_pairs}
         self.figs = {}
         
+        # Set dark mode style
+        plt.style.use('dark_background')
+        
         # Create a figure for each currency pair
         for pair in currency_pairs:
             self.figs[pair] = plt.figure(figsize=(10, 6))
-            self.figs[pair].suptitle(f"{pair} Trading Performance", fontsize=14)
+            self.figs[pair].suptitle(f"{pair} Trading Performance", fontsize=14, color='white')
             plt.ion()  # Enable interactive mode
     
     def update(self, currency_pair, step, balance, position, action):
@@ -323,43 +324,61 @@ class TrainingVisualizer:
         
         # Clear figure
         self.figs[currency_pair].clear()
+        self.figs[currency_pair].suptitle(f"{currency_pair} Trading Performance", fontsize=14, color='white')
         
         # Create subplots
         ax1 = self.figs[currency_pair].add_subplot(211)  # Balance plot
         ax2 = self.figs[currency_pair].add_subplot(212)  # Position plot
         
+        # Set dark mode for subplots
+        ax1.set_facecolor('black')
+        ax2.set_facecolor('black')
+        
         # Plot balance
-        ax1.plot(self.steps[currency_pair], self.balances[currency_pair], 'b-')
-        ax1.set_ylabel('Balance')
-        ax1.set_title(f'Account Balance - Current: {balance:.2f}')
+        ax1.plot(self.steps[currency_pair], self.balances[currency_pair], 'cyan', linewidth=2)
+        ax1.set_ylabel('Balance', color='white')
+        ax1.set_title(f'Account Balance - Current: {balance:.2f}', color='white')
+        ax1.tick_params(axis='x', colors='white')
+        ax1.tick_params(axis='y', colors='white')
+        ax1.spines['bottom'].set_color('white')
+        ax1.spines['top'].set_color('white') 
+        ax1.spines['right'].set_color('white')
+        ax1.spines['left'].set_color('white')
         
         # Plot position and actions
-        ax2.plot(self.steps[currency_pair], self.positions[currency_pair], 'g-')
+        ax2.plot(self.steps[currency_pair], self.positions[currency_pair], 'lime', linewidth=2)
         
         # Color the action points
-        action_colors = {0: 'gray', 1: 'green', 2: 'red', 3: 'blue'}  # Hold, Buy, Sell, Close
+        action_colors = {0: 'gray', 1: 'lime', 2: 'red', 3: 'cyan'}  # Hold, Buy, Sell, Close
         for i, a in enumerate(self.actions[currency_pair]):
             # Show all actions including holds (0)
             ax2.scatter(self.steps[currency_pair][i], self.positions[currency_pair][i], 
-                       c=action_colors.get(a, 'black'), marker='o', alpha=0.7 if a == 0 else 1.0)
+                       c=action_colors.get(a, 'white'), marker='o', alpha=0.7 if a == 0 else 1.0)
         
-        ax2.set_xlabel('Steps')
-        ax2.set_ylabel('Position')
+        ax2.set_xlabel('Steps', color='white')
+        ax2.set_ylabel('Position', color='white')
         ax2.set_yticks([-1, 0, 1])
-        ax2.set_yticklabels(['Short', 'None', 'Long'])
-        ax2.set_title('Position and Actions')
+        ax2.set_yticklabels(['Short', 'None', 'Long'], color='white')
+        ax2.set_title('Position and Actions', color='white')
+        ax2.tick_params(axis='x', colors='white')
+        ax2.tick_params(axis='y', colors='white')
+        ax2.spines['bottom'].set_color('white')
+        ax2.spines['top'].set_color('white') 
+        ax2.spines['right'].set_color('white')
+        ax2.spines['left'].set_color('white')
         
         # Add legend for actions
         from matplotlib.lines import Line2D
         legend_elements = [
-            Line2D([0], [0], marker='o', color='w', markerfacecolor='green', label='Buy', markersize=8),
-            Line2D([0], [0], marker='o', color='w', markerfacecolor='red', label='Sell', markersize=8),
-            Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', label='Close', markersize=8),
-            Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', label='Hold', markersize=8)
+            Line2D([0], [0], marker='o', color='black', markerfacecolor='lime', label='Buy', markersize=8),
+            Line2D([0], [0], marker='o', color='black', markerfacecolor='red', label='Sell', markersize=8),
+            Line2D([0], [0], marker='o', color='black', markerfacecolor='cyan', label='Close', markersize=8),
+            Line2D([0], [0], marker='o', color='black', markerfacecolor='gray', label='Hold', markersize=8)
         ]
-        ax2.legend(handles=legend_elements, loc='lower right')
+        ax2.legend(handles=legend_elements, loc='lower right', facecolor='black', edgecolor='white', labelcolor='white')
         
         # Update the figure
+        self.figs[currency_pair].set_facecolor('black')
         self.figs[currency_pair].tight_layout()
         self.figs[currency_pair].canvas.draw()
         self.figs[currency_pair].canvas.flush_events()
