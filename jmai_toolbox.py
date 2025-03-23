@@ -596,7 +596,7 @@ def setup_matplotlib_visualization(enable_interactive=True):
         plt.ioff()  # Disable interactive mode
 
 
-def graph_flat_dataframe(flat_df, currency_pair, current_date=None):
+def graph_flat_dataframe(flat_df, currency_pair, current_date=None, figs=None):
     print(f"\nConverting flat dataframe back to graphable format for {currency_pair}...")
     
     # Print column names for debugging
@@ -665,6 +665,6 @@ def graph_flat_dataframe(flat_df, currency_pair, current_date=None):
     setup_matplotlib_visualization(enable_interactive=True)
     
     # Graph the display dataframes
-    figures = graph_display_dataframes(display_dfs)
+    figures = graph_display_dataframes(display_dfs, figs, current_date)
     
     return figures
