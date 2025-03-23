@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import os
+import matplotlib.pyplot as plt
 
 # First set environment variables before importing torch 
 os.environ['PYTORCH_JIT'] = '0'
@@ -42,7 +43,7 @@ MAX_POSITION = 1.0
 TRANSACTION_FEE = 0.0001  # 0.01% per transaction
 
 class TradingEnv(gym.Env):
-    def __init__(self, currency_pair: str, start_date=START_DATE):
+    def __init__(self, currency_pair: str, start_date=START_DATE, visualizer=None):
         super(TradingEnv, self).__init__()
         
         self.currency_pair = currency_pair
@@ -70,7 +71,7 @@ class TradingEnv(gym.Env):
         # Trading variables
         self.position = 0.0  # 0=no position, 1=long, -1=short
         self.entry_price = 0
-        self.balance = 1000.0  # Initial balance
+        self.balance = 10000.0  # Initial balance
         self.initial_balance = self.balance
         self.step_counter = 0
         self.total_pnl = 0.0
@@ -80,6 +81,8 @@ class TradingEnv(gym.Env):
         
         print(f"TradingEnv initialized for {currency_pair} with {num_features} features")
         
+        self.visualizer = visualizer
+    
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         
@@ -197,9 +200,10 @@ class TradingEnv(gym.Env):
                 self.entry_price = 0
     
     def _map_continuous_to_discrete(self, continuous_action):
-        """Map continuous action to discrete actions:
+        """
+        Map continuous action from SAC (-1 to 1) to discrete trading action:
         -1.0 to -0.5: Sell (2)
-        -0.5 to 0.0: Do nothing (0)
+        -0.5 to 0.0: Hold (0) 
         0.0 to 0.5: Buy (1)
         0.5 to 1.0: Close (3)
         """
@@ -208,7 +212,7 @@ class TradingEnv(gym.Env):
         if action < -0.5:
             return 2  # Sell
         elif action < 0.0:
-            return 0  # Do nothing
+            return 0  # Do nothing/Hold
         elif action < 0.5:
             return 1  # Buy
         else:
@@ -217,8 +221,8 @@ class TradingEnv(gym.Env):
     def step(self, action):
         self.step_counter += 1
         
-        # Print progress every 1 steps
-        if self.step_counter % 1 == 0:
+        # Print progress every 5 steps
+        if self.step_counter % 5 == 0:
             print(f"{self.currency_pair} | Step {self.step_counter} | Position: {self.position} | Balance: {self.balance:.2f}")
         
         # Map continuous action to discrete
@@ -250,6 +254,10 @@ class TradingEnv(gym.Env):
         if self.step_counter % 10 == 0:
             print(f"{self.currency_pair} | Step {self.step_counter}: Action={discrete_action}, Reward={reward:.4f}, PnL={self.balance:.4f}")
             
+        # Update visualization if available
+        if self.visualizer is not None:
+            self.visualizer.update(self.currency_pair, self.step_counter, self.balance, self.position, discrete_action)
+        
         # Return the next observation
         return self._get_observation(), reward, done, False, {}
 
@@ -291,7 +299,72 @@ class ProgressCallback(BaseCallback):
         
         return True
 
-def make_env(currency_pair, rank, seed=0):
+class TrainingVisualizer:
+    def __init__(self, currency_pairs):
+        self.currency_pairs = currency_pairs
+        self.balances = {pair: [] for pair in currency_pairs}
+        self.positions = {pair: [] for pair in currency_pairs}
+        self.steps = {pair: [] for pair in currency_pairs}
+        self.actions = {pair: [] for pair in currency_pairs}
+        self.figs = {}
+        
+        # Create a figure for each currency pair
+        for pair in currency_pairs:
+            self.figs[pair] = plt.figure(figsize=(10, 6))
+            self.figs[pair].suptitle(f"{pair} Trading Performance", fontsize=14)
+            plt.ion()  # Enable interactive mode
+    
+    def update(self, currency_pair, step, balance, position, action):
+        # Update data
+        self.steps[currency_pair].append(step)
+        self.balances[currency_pair].append(balance)
+        self.positions[currency_pair].append(position)
+        self.actions[currency_pair].append(action)
+        
+        # Clear figure
+        self.figs[currency_pair].clear()
+        
+        # Create subplots
+        ax1 = self.figs[currency_pair].add_subplot(211)  # Balance plot
+        ax2 = self.figs[currency_pair].add_subplot(212)  # Position plot
+        
+        # Plot balance
+        ax1.plot(self.steps[currency_pair], self.balances[currency_pair], 'b-')
+        ax1.set_ylabel('Balance')
+        ax1.set_title(f'Account Balance - Current: {balance:.2f}')
+        
+        # Plot position and actions
+        ax2.plot(self.steps[currency_pair], self.positions[currency_pair], 'g-')
+        
+        # Color the action points
+        action_colors = {0: 'gray', 1: 'green', 2: 'red', 3: 'blue'}  # Hold, Buy, Sell, Close
+        for i, a in enumerate(self.actions[currency_pair]):
+            # Show all actions including holds (0)
+            ax2.scatter(self.steps[currency_pair][i], self.positions[currency_pair][i], 
+                       c=action_colors.get(a, 'black'), marker='o', alpha=0.7 if a == 0 else 1.0)
+        
+        ax2.set_xlabel('Steps')
+        ax2.set_ylabel('Position')
+        ax2.set_yticks([-1, 0, 1])
+        ax2.set_yticklabels(['Short', 'None', 'Long'])
+        ax2.set_title('Position and Actions')
+        
+        # Add legend for actions
+        from matplotlib.lines import Line2D
+        legend_elements = [
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='green', label='Buy', markersize=8),
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='red', label='Sell', markersize=8),
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', label='Close', markersize=8),
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', label='Hold', markersize=8)
+        ]
+        ax2.legend(handles=legend_elements, loc='lower right')
+        
+        # Update the figure
+        self.figs[currency_pair].tight_layout()
+        self.figs[currency_pair].canvas.draw()
+        self.figs[currency_pair].canvas.flush_events()
+
+def make_env(currency_pair, rank, seed=0, visualizer=None):
     """
     Create a gym environment for trading with the specified currency pair.
     Utility function for multiprocessed env.
@@ -299,10 +372,11 @@ def make_env(currency_pair, rank, seed=0):
     :param currency_pair: Currency pair to trade
     :param rank: Instance number for seed
     :param seed: Random seed
+    :param visualizer: Optional visualizer for tracking progress
     :return: Environment creator function
     """
     def _init():
-        env = TradingEnv(currency_pair)
+        env = TradingEnv(currency_pair, visualizer=visualizer)
         env = Monitor(env)
         env.reset(seed=seed + rank)
         return env
@@ -316,12 +390,15 @@ def train_model(currency_pairs=CURRENCY_PAIRS, total_timesteps=1000000):
     """
     models = {}
     
+    # Create visualizer
+    visualizer = TrainingVisualizer(currency_pairs)
+    
     # Creating environment for each currency pair
     envs = []
     
     # Create parallel environments
     print("Creating parallel environments for currency pairs:", currency_pairs)
-    envs = DummyVecEnv([make_env(pair, i) for i, pair in enumerate(currency_pairs)])
+    envs = DummyVecEnv([make_env(pair, i, visualizer=visualizer) for i, pair in enumerate(currency_pairs)])
     print(f"Created {len(currency_pairs)} parallel environments")
     
     # Set up policy kwargs
