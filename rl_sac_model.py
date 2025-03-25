@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
+from matplotlib import patches
 
 # Debug flags
 DEBUG_ENABLE_GRAPHS = True  # Set to True to enable visualization, False to disable
@@ -27,8 +28,17 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.monitor import Monitor
 from typing import Dict, List, Tuple
-from get_dataframe import get_dataframe, TIMEFRAMES
 from jmai_toolbox import load_currency_pairs, filter_dataframes_before_date, normalize_dataframes_separately, create_flat_dataframes
+
+# Define TIMEFRAMES here
+TIMEFRAMES = [
+    'D1',
+    'H1',
+    'H4',
+    'M1',
+    'M5',
+    'M30'
+]
 
 # Variables from gym.py
 START_DATE = '2020-01-01 00:00'
@@ -44,7 +54,7 @@ CURRENCY_PAIRS = [
 
 # Constants for the trading environment
 MAX_POSITION = 1.0
-TRANSACTION_FEE = 0.0001  # 0.01% per transaction
+TRANSACTION_FEE = 0.0003  # Increased transaction fee (0.03% per transaction)
 
 class TradingEnv(gym.Env):
     def __init__(self, currency_pair: str, start_date=START_DATE, visualizer=None):
@@ -82,6 +92,8 @@ class TradingEnv(gym.Env):
         self.initial_balance = self.balance
         self.step_counter = 0
         self.total_pnl = 0.0
+        self.holding_time = 0  # Track how long a position is held
+        self.equity = self.balance  # Track equity (balance + unrealized PnL)
         
         # Track the trading history
         self.trades = []
@@ -119,9 +131,11 @@ class TradingEnv(gym.Env):
         self.position = 0
         self.entry_price = 0
         self.balance = self.initial_balance
+        self.equity = self.balance
         self.trades = []
         self.step_counter = 0
         self.total_pnl = 0.0
+        self.holding_time = 0  # Reset holding time
         
         return self._get_observation(), {}
     
@@ -156,9 +170,23 @@ class TradingEnv(gym.Env):
             else:  # Short position
                 unrealized_pnl = -price_diff
             
-            # Assign reward based on this minute's PnL
-            reward = unrealized_pnl
+            # Update equity
+            self.equity = self.balance + unrealized_pnl
+            
+            # Simple reward based on profit/loss
+            if unrealized_pnl > 0:
+                # Small holding bonus for profitable positions
+                holding_bonus = min(0.2, self.holding_time / 200)
+                reward = unrealized_pnl * (1.0 + holding_bonus)
+            else:
+                reward = unrealized_pnl
+        else:
+            self.equity = self.balance
         
+        # Add transaction cost penalty
+        if action in [1, 2, 3]:  # Buy, Sell, Close actions
+            reward -= TRANSACTION_FEE * self.balance
+            
         return reward
     
     def _execute_trade(self, action):
@@ -245,8 +273,11 @@ class TradingEnv(gym.Env):
     def step(self, action):
         self.step_counter += 1
         
-        # Print progress at every step
-        print(f"{self.currency_pair} | Step {self.step_counter} | Date: {self.current_date} | Position: {self.position} | Balance: {self.balance:.2f}")
+        # Update holding time counter
+        if self.position != 0:
+            self.holding_time += 1
+        else:
+            self.holding_time = 0
         
         # Map continuous action to discrete
         discrete_action = self._map_continuous_to_discrete(action)
@@ -260,26 +291,19 @@ class TradingEnv(gym.Env):
         # Advance time by 1 minute
         self.current_date += pd.Timedelta(minutes=1)
         
-        # Process the dataframe for the new date using cached data
+        # Process the dataframe for the new date
         self._process_dataframe()
         
         # Check if we've reached the end of data
-        done = False
-        if self.flat_dataframes[self.currency_pair].empty:
-            done = True
-            # Close any open positions
-            if self.position != 0:
-                action = 3  # Close position
-                self._execute_trade(action)
+        done = self.flat_dataframes[self.currency_pair].empty
+        if done and self.position != 0:
+            # Close any open positions at the end
+            self._execute_trade(3)  # Close position
         
-        # Debug output at every step with action and reward
-        print(f"{self.currency_pair} | Action={discrete_action}, Reward={reward:.4f}, PnL={self.balance:.4f}")
-        
-        # Update visualization if available and enabled
+        # Update visualization if enabled
         if DEBUG_ENABLE_GRAPHS and self.visualizer is not None:
-            self.visualizer.update(self.currency_pair, self.step_counter, self.balance, self.position, discrete_action)
+            self.visualizer.update(self.currency_pair, self.step_counter, self.equity, self.position, discrete_action)
         
-        # Return the next observation
         return self._get_observation(), reward, done, False, {}
 
 class ProgressCallback(BaseCallback):
@@ -335,41 +359,37 @@ class TrainingVisualizer:
         # Create a figure for each currency pair
         for pair in currency_pairs:
             self.figs[pair] = plt.figure(figsize=(10, 6))
-            self.figs[pair].suptitle(f"{pair} Trading Performance", fontsize=14, color='white')
+            self.figs[pair].suptitle(f"{pair} Trading Performance", fontsize=14)
         
-        # Enable interactive mode and show the figures
-        plt.ion()  # Enable interactive mode
-        plt.show()  # Make sure the windows are displayed
+        plt.ion()
+        plt.show()
     
-    def update(self, currency_pair, step, balance, position, action):
+    def update(self, currency_pair, step, equity, position, action):
+        # Only store last 100 data points to improve performance
+        if len(self.steps[currency_pair]) >= 100:
+            self.steps[currency_pair].pop(0)
+            self.balances[currency_pair].pop(0)
+            self.positions[currency_pair].pop(0)
+            self.actions[currency_pair].pop(0)
+        
         # Update data
         self.steps[currency_pair].append(step)
-        self.balances[currency_pair].append(balance)
+        self.balances[currency_pair].append(equity)  # Using equity here, not balance
         self.positions[currency_pair].append(position)
         self.actions[currency_pair].append(action)
         
         # Clear figure
         self.figs[currency_pair].clear()
-        self.figs[currency_pair].suptitle(f"{currency_pair} Trading Performance", fontsize=14, color='white')
+        self.figs[currency_pair].suptitle(f"{currency_pair} Trading Performance", fontsize=14)
         
         # Create subplots
-        ax1 = self.figs[currency_pair].add_subplot(211)  # Balance plot
+        ax1 = self.figs[currency_pair].add_subplot(211)  # Equity plot
         ax2 = self.figs[currency_pair].add_subplot(212)  # Position plot
         
-        # Set dark mode for subplots
-        ax1.set_facecolor('black')
-        ax2.set_facecolor('black')
-        
-        # Plot balance
+        # Plot equity
         ax1.plot(self.steps[currency_pair], self.balances[currency_pair], 'cyan', linewidth=2)
-        ax1.set_ylabel('Balance', color='white')
-        ax1.set_title(f'Account Balance - Current: {balance:.2f}', color='white')
-        ax1.tick_params(axis='x', colors='white')
-        ax1.tick_params(axis='y', colors='white')
-        ax1.spines['bottom'].set_color('white')
-        ax1.spines['top'].set_color('white') 
-        ax1.spines['right'].set_color('white')
-        ax1.spines['left'].set_color('white')
+        ax1.set_ylabel('Equity')
+        ax1.set_title(f'Account Balance - Current: {equity:.2f}')
         
         # Plot position and actions
         ax2.plot(self.steps[currency_pair], self.positions[currency_pair], 'lime', linewidth=2)
@@ -377,41 +397,30 @@ class TrainingVisualizer:
         # Color the action points
         action_colors = {0: 'gray', 1: 'lime', 2: 'red', 3: 'cyan'}  # Hold, Buy, Sell, Close
         for i, a in enumerate(self.actions[currency_pair]):
-            # Show all actions including holds (0)
             ax2.scatter(self.steps[currency_pair][i], self.positions[currency_pair][i], 
                        c=action_colors.get(a, 'white'), marker='o', alpha=0.7 if a == 0 else 1.0)
         
-        ax2.set_xlabel('Steps', color='white')
-        ax2.set_ylabel('Position', color='white')
+        ax2.set_xlabel('Steps')
+        ax2.set_ylabel('Position')
         ax2.set_yticks([-1, 0, 1])
-        ax2.set_yticklabels(['Short', 'None', 'Long'], color='white')
-        ax2.set_title('Position and Actions', color='white')
-        ax2.tick_params(axis='x', colors='white')
-        ax2.tick_params(axis='y', colors='white')
-        ax2.spines['bottom'].set_color('white')
-        ax2.spines['top'].set_color('white') 
-        ax2.spines['right'].set_color('white')
-        ax2.spines['left'].set_color('white')
+        ax2.set_yticklabels(['Short', 'None', 'Long'])
+        ax2.set_title('Position and Actions')
         
-        # Add legend for actions
-        from matplotlib.lines import Line2D
+        # Add legend - create patches for legend
         legend_elements = [
-            Line2D([0], [0], marker='o', color='black', markerfacecolor='lime', label='Buy', markersize=8),
-            Line2D([0], [0], marker='o', color='black', markerfacecolor='red', label='Sell', markersize=8),
-            Line2D([0], [0], marker='o', color='black', markerfacecolor='cyan', label='Close', markersize=8),
-            Line2D([0], [0], marker='o', color='black', markerfacecolor='gray', label='Hold', markersize=8)
+            patches.Patch(facecolor='lime', label='Buy'),
+            patches.Patch(facecolor='red', label='Sell'),
+            patches.Patch(facecolor='cyan', label='Close'),
+            patches.Patch(facecolor='gray', label='Hold')
         ]
-        ax2.legend(handles=legend_elements, loc='lower right', facecolor='black', edgecolor='white', labelcolor='white')
+        
+        # Add the legend to the position subplot
+        ax2.legend(handles=legend_elements, loc='lower right')
         
         # Update the figure
-        self.figs[currency_pair].set_facecolor('black')
-        self.figs[currency_pair].tight_layout()
         self.figs[currency_pair].canvas.draw()
         self.figs[currency_pair].canvas.flush_events()
-        
-        # Add a small pause to allow the UI to update
-        plt.pause(0.01)  # Small pause to allow the plot to be displayed
-
+    
 def make_env(currency_pair, rank, seed=0, visualizer=None):
     """
     Create a gym environment for trading with the specified currency pair.
