@@ -19,17 +19,7 @@ TIMEFRAMES = [
 ]
 
 def get_dataframe(currency_pair, start_date, num_bars_to_plot):
-    """
-    Get data for a single currency pair and return it as a flat dataframe.
-    
-    Args:
-        currency_pair (str): The currency pair to retrieve (e.g., 'EURUSD')
-        start_date (str): Start date from where the display dataframes should start getting data
-        num_bars_to_plot (int): Number of bars to plot for each timeframe
-    
-    Returns:
-        pandas.DataFrame: Flat dataframe containing the requested currency pair data
-    """
+
     # Convert to list for compatibility with load_currency_pairs function
     currency_pairs = [currency_pair]
     
@@ -43,15 +33,7 @@ def get_dataframe(currency_pair, start_date, num_bars_to_plot):
     current_date_str = current_date.strftime('%Y-%m-%d %H:%M')
     # print(f"\nProcessing date: {current_date_str}")
     
-    # Find the last date in the dataframes to know when to stop the loop
-    # last_date = datetime.min
-    # for key, df in dataframes.items():
-    #     if not df.empty and 'time' in df.columns:
-    #         current_last_date = df['time'].max()
-    #         if current_last_date > last_date:
-    #             last_date = current_last_date
 
-    # print(f"Animation will run from {start_date} to {last_date}")
     
     #EXTRACT DATES
     display_dataframes = filter_dataframes_before_date(dataframes, current_date, num_bars_to_plot)

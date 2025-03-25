@@ -3,6 +3,9 @@ import pandas as pd
 import os
 import matplotlib.pyplot as plt
 
+# Debug flags
+DEBUG_ENABLE_GRAPHS = True  # Set to True to enable visualization, False to disable
+
 # First set environment variables before importing torch 
 os.environ['PYTORCH_JIT'] = '0'
 os.environ['TORCH_USE_CUDA_DSA'] = '0'
@@ -24,18 +27,19 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.monitor import Monitor
 from typing import Dict, List, Tuple
-from get_dataframe import get_dataframe
+from get_dataframe import get_dataframe, TIMEFRAMES
+from jmai_toolbox import load_currency_pairs, filter_dataframes_before_date, normalize_dataframes_separately, create_flat_dataframes
 
 # Variables from gym.py
 START_DATE = '2020-01-01 00:00'
 NUM_BARS_TO_PLOT = 100
 CURRENCY_PAIRS = [
-    'AUDUSD',
+    # 'AUDUSD',
     'EURUSD',
-    'GBPUSD',
-    'USDCAD',
-    'USDCHF',
-    'USDJPY'
+    # 'GBPUSD',
+    # 'USDCAD',
+    # 'USDCHF',
+    # 'USDJPY'
 ]
 
 # Constants for the trading environment
@@ -50,10 +54,13 @@ class TradingEnv(gym.Env):
         self.current_date = pd.to_datetime(start_date)
         self.initial_date = self.current_date
         
-        # Initial data - using the flat_dataframes dictionary pattern
+        # Load all data once at initialization
+        self.all_raw_dataframes = load_currency_pairs([self.currency_pair], TIMEFRAMES, 
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "picklefiles"))
+        
+        # Initial data processing
         self.flat_dataframes = {}
-        flat_df = get_dataframe(self.currency_pair, self.current_date, NUM_BARS_TO_PLOT)
-        self.flat_dataframes[self.currency_pair] = flat_df
+        self._process_dataframe()
         
         # Environment setup
         # State: flattened dataframe (all available features)
@@ -79,17 +86,34 @@ class TradingEnv(gym.Env):
         # Track the trading history
         self.trades = []
         
-        print(f"TradingEnv initialized for {currency_pair} with {num_features} features")
-        
         self.visualizer = visualizer
+    
+    def _process_dataframe(self):
+        """Process the raw dataframes to get the flat dataframe needed for the current date"""
+        
+        # Use the raw dataframes we loaded once, and just filter based on current date
+        display_dataframes = filter_dataframes_before_date(
+            self.all_raw_dataframes, self.current_date, NUM_BARS_TO_PLOT)
+        
+        # Normalize and flatten
+        display_dataframes = normalize_dataframes_separately(display_dataframes)
+        display_dataframes_flat = create_flat_dataframes(display_dataframes)
+        
+        # Store the processed dataframe
+        if self.currency_pair in display_dataframes_flat:
+            self.flat_dataframes[self.currency_pair] = display_dataframes_flat[self.currency_pair]
+        else:
+            print(f"Warning: No data found for {self.currency_pair} at date {self.current_date}")
+            self.flat_dataframes[self.currency_pair] = pd.DataFrame()
     
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         
         # Reset to initial date
         self.current_date = self.initial_date
-        flat_df = get_dataframe(self.currency_pair, self.current_date, NUM_BARS_TO_PLOT)
-        self.flat_dataframes[self.currency_pair] = flat_df
+        
+        # Process the dataframe for the initial date using cached data
+        self._process_dataframe()
         
         # Reset trading variables
         self.position = 0
@@ -236,9 +260,8 @@ class TradingEnv(gym.Env):
         # Advance time by 1 minute
         self.current_date += pd.Timedelta(minutes=1)
         
-        # Get new data using the flat_dataframes pattern
-        flat_df = get_dataframe(self.currency_pair, self.current_date, NUM_BARS_TO_PLOT)
-        self.flat_dataframes[self.currency_pair] = flat_df
+        # Process the dataframe for the new date using cached data
+        self._process_dataframe()
         
         # Check if we've reached the end of data
         done = False
@@ -252,8 +275,8 @@ class TradingEnv(gym.Env):
         # Debug output at every step with action and reward
         print(f"{self.currency_pair} | Action={discrete_action}, Reward={reward:.4f}, PnL={self.balance:.4f}")
         
-        # Update visualization if available
-        if self.visualizer is not None:
+        # Update visualization if available and enabled
+        if DEBUG_ENABLE_GRAPHS and self.visualizer is not None:
             self.visualizer.update(self.currency_pair, self.step_counter, self.balance, self.position, discrete_action)
         
         # Return the next observation
@@ -313,7 +336,10 @@ class TrainingVisualizer:
         for pair in currency_pairs:
             self.figs[pair] = plt.figure(figsize=(10, 6))
             self.figs[pair].suptitle(f"{pair} Trading Performance", fontsize=14, color='white')
-            plt.ion()  # Enable interactive mode
+        
+        # Enable interactive mode and show the figures
+        plt.ion()  # Enable interactive mode
+        plt.show()  # Make sure the windows are displayed
     
     def update(self, currency_pair, step, balance, position, action):
         # Update data
@@ -382,6 +408,9 @@ class TrainingVisualizer:
         self.figs[currency_pair].tight_layout()
         self.figs[currency_pair].canvas.draw()
         self.figs[currency_pair].canvas.flush_events()
+        
+        # Add a small pause to allow the UI to update
+        plt.pause(0.01)  # Small pause to allow the plot to be displayed
 
 def make_env(currency_pair, rank, seed=0, visualizer=None):
     """
@@ -409,8 +438,10 @@ def train_model(currency_pairs=CURRENCY_PAIRS, total_timesteps=1000000):
     """
     models = {}
     
-    # Create visualizer
-    visualizer = TrainingVisualizer(currency_pairs)
+    # Create visualizer only if enabled
+    visualizer = None
+    if DEBUG_ENABLE_GRAPHS:
+        visualizer = TrainingVisualizer(currency_pairs)
     
     # Creating environment for each currency pair
     envs = []
