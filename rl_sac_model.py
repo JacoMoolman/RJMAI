@@ -53,8 +53,8 @@ CURRENCY_PAIRS = [
 ]
 
 # Constants for the trading environment
-MAX_POSITION = 1.0
-TRANSACTION_FEE = 0.0003  # Increased transaction fee (0.03% per transaction)
+TRANSACTION_FEE = 0.0005  # Reduced transaction fee (0.05% per trade)
+MAX_POSITION = 1.0  # Maximum position size
 
 class TradingEnv(gym.Env):
     def __init__(self, currency_pair: str, start_date=START_DATE, visualizer=None):
@@ -115,7 +115,7 @@ class TradingEnv(gym.Env):
         if self.currency_pair in display_dataframes_flat:
             self.flat_dataframes[self.currency_pair] = display_dataframes_flat[self.currency_pair]
         else:
-            print(f"Warning: No data found for {self.currency_pair} at date {self.current_date}")
+            # Silent failure - just create empty dataframe
             self.flat_dataframes[self.currency_pair] = pd.DataFrame()
     
     def reset(self, seed=None, options=None):
@@ -144,64 +144,40 @@ class TradingEnv(gym.Env):
         return np.array(self.flat_dataframes[self.currency_pair].values.flatten(), dtype=np.float32)
     
     def _get_current_price(self):
-        # Get the most recent close price
-        # Using timeframe M1 (1 minute)
-        if 'M1_close_0' in self.flat_dataframes[self.currency_pair].columns:
-            return self.flat_dataframes[self.currency_pair]['M1_close_0'].values[0]
+        df = self.flat_dataframes[self.currency_pair]
         
-        # Fallback to the first 'close' column if M1_close_0 is not available
-        for col in self.flat_dataframes[self.currency_pair].columns:
-            if 'close_0' in col:
-                return self.flat_dataframes[self.currency_pair][col].values[0]
-        
-        # Default return if no close price is found
-        print("Warning: No close price found in dataframe")
-        return 1.0  # Default value
-    
-    def _calculate_reward(self, action):
-        current_price = self._get_current_price()
-        reward = 0
-        
-        # Calculate PnL if we have a position
-        if self.position != 0:
-            price_diff = current_price - self.entry_price
-            if self.position == 1:  # Long position
-                unrealized_pnl = price_diff
-            else:  # Short position
-                unrealized_pnl = -price_diff
+        if df.empty:
+            return 1.0
             
-            # Update equity
-            self.equity = self.balance + unrealized_pnl
-            
-            # Simple reward based on profit/loss
-            if unrealized_pnl > 0:
-                # Small holding bonus for profitable positions
-                holding_bonus = min(0.2, self.holding_time / 200)
-                reward = unrealized_pnl * (1.0 + holding_bonus)
-            else:
-                reward = unrealized_pnl
-        else:
-            self.equity = self.balance
+        # Simply use the first available close price without modification
+        m1_close_cols = [col for col in df.columns if 'M1_close_' in col]
+        if m1_close_cols:
+            return df[m1_close_cols[0]].values[0]
         
-        # Add transaction cost penalty
-        if action in [1, 2, 3]:  # Buy, Sell, Close actions
-            reward -= TRANSACTION_FEE * self.balance
-            
-        return reward
-    
+        # Fall back to any close column
+        close_cols = [col for col in df.columns if 'close' in col.lower()]
+        if close_cols:
+            return df[close_cols[0]].values[0]
+                
+        # If no column found, use a default value
+        return 1.0
+
     def _execute_trade(self, action):
+        # Get current price
         current_price = self._get_current_price()
         
-        # Execute the trade based on the action
-        if action == 0:  # Do nothing
-            pass
+        # Debug - print price for verification (only for actual trades)
+        if action in [1, 2, 3]:  # Buy, Sell, Close actions
+            price_str = f"{current_price:.6f}"
+            print(f"Action: {action} | Price: {price_str}")
         
-        elif action == 1:  # Buy
+        if action == 1:  # Buy
             if self.position == 0:  # Only buy if no position
                 self.position = 1
                 self.entry_price = current_price
                 # Apply transaction fee
-                self.balance -= self.balance * TRANSACTION_FEE
+                fee = self.balance * TRANSACTION_FEE
+                self.balance -= fee
                 # Record trade
                 self.trades.append({
                     'time': self.current_date,
@@ -215,7 +191,8 @@ class TradingEnv(gym.Env):
                 self.position = -1
                 self.entry_price = current_price
                 # Apply transaction fee
-                self.balance -= self.balance * TRANSACTION_FEE
+                fee = self.balance * TRANSACTION_FEE
+                self.balance -= fee
                 # Record trade
                 self.trades.append({
                     'time': self.current_date,
@@ -226,17 +203,29 @@ class TradingEnv(gym.Env):
             
         elif action == 3:  # Close position
             if self.position != 0:  # Only close if we have a position
-                # Calculate profit/loss
-                price_diff = current_price - self.entry_price
-                if self.position == 1:  # Long position
-                    profit = price_diff * MAX_POSITION 
-                else:  # Short position
-                    profit = -price_diff * MAX_POSITION
+                # For forex, use fixed lot size and pip value
+                lot_size = 1.0  # Standard lot (100,000 units)
+                pip_value = 10  # $10 per pip for standard lot
                 
-                # Update balance
+                if self.position == 1:  # Long position
+                    # Calculate pips (e.g., 0.0001 = 1 pip for most pairs)
+                    pips = (current_price - self.entry_price) * 10000
+                    profit = pips * pip_value * lot_size
+                else:  # Short position
+                    # Calculate pips for short position
+                    pips = (self.entry_price - current_price) * 10000
+                    profit = pips * pip_value * lot_size
+                
+                # Debug trade result
+                result = "PROFIT" if profit > 0 else "LOSS"
+                print(f"CLOSE {result}: {'LONG' if self.position == 1 else 'SHORT'} | Entry: {self.entry_price:.6f} | Exit: {current_price:.6f} | Pips: {pips:.1f} | P/L: ${profit:.2f}")
+                
+                # Update balance with profit/loss
                 self.balance += profit
+                
                 # Apply transaction fee
-                self.balance -= self.balance * TRANSACTION_FEE
+                fee = self.balance * TRANSACTION_FEE
+                self.balance -= fee
                 
                 # Record trade
                 self.trades.append({
@@ -285,8 +274,12 @@ class TradingEnv(gym.Env):
         # Execute the trade
         self._execute_trade(discrete_action)
         
-        # Calculate reward
+        # Calculate reward and update equity
         reward = self._calculate_reward(discrete_action)
+        
+        # Print simplified progress (only for major actions or every 10 steps)
+        if discrete_action in [1, 2, 3] or (self.step_counter % 10 == 0 and self.position != 0):
+            print(f"{self.currency_pair} | Step {self.step_counter} | Pos: {self.position} | Balance: {self.balance:.2f} | Equity: {self.equity:.2f}")
         
         # Advance time by 1 minute
         self.current_date += pd.Timedelta(minutes=1)
@@ -302,9 +295,45 @@ class TradingEnv(gym.Env):
         
         # Update visualization if enabled
         if DEBUG_ENABLE_GRAPHS and self.visualizer is not None:
-            self.visualizer.update(self.currency_pair, self.step_counter, self.equity, self.position, discrete_action)
+            self.visualizer.update(self.currency_pair, self.step_counter, self.balance, self.equity, self.position, discrete_action)
         
         return self._get_observation(), reward, done, False, {}
+
+    def _calculate_reward(self, action):
+        current_price = self._get_current_price()
+        reward = 0
+        
+        # Calculate PnL if we have a position
+        if self.position != 0:
+            # Fixed values for forex trading
+            lot_size = 1.0
+            pip_value = 10  # $10 per pip
+            
+            if self.position == 1:  # Long position
+                pips = (current_price - self.entry_price) * 10000
+                unrealized_pnl = pips * pip_value * lot_size
+            else:  # Short position
+                pips = (self.entry_price - current_price) * 10000
+                unrealized_pnl = pips * pip_value * lot_size
+            
+            # Update equity (balance + unrealized PnL)
+            self.equity = self.balance + unrealized_pnl
+            
+            # Simple reward
+            if unrealized_pnl > 0:
+                # Holding bonus for profitable positions
+                holding_bonus = min(0.2, self.holding_time / 300)
+                reward = unrealized_pnl * (1.0 + holding_bonus)
+            else:
+                reward = unrealized_pnl
+        else:
+            self.equity = self.balance
+        
+        # Transaction cost penalty
+        if action in [1, 2, 3]:  # Buy, Sell, Close actions
+            reward -= TRANSACTION_FEE * self.balance
+            
+        return reward
 
 class ProgressCallback(BaseCallback):
     """
@@ -348,6 +377,7 @@ class TrainingVisualizer:
     def __init__(self, currency_pairs):
         self.currency_pairs = currency_pairs
         self.balances = {pair: [] for pair in currency_pairs}
+        self.equities = {pair: [] for pair in currency_pairs}  # Track equity separately
         self.positions = {pair: [] for pair in currency_pairs}
         self.steps = {pair: [] for pair in currency_pairs}
         self.actions = {pair: [] for pair in currency_pairs}
@@ -358,23 +388,26 @@ class TrainingVisualizer:
         
         # Create a figure for each currency pair
         for pair in currency_pairs:
-            self.figs[pair] = plt.figure(figsize=(10, 6))
+            self.figs[pair] = plt.figure(figsize=(10, 8))  # Taller figure
             self.figs[pair].suptitle(f"{pair} Trading Performance", fontsize=14)
         
         plt.ion()
         plt.show()
     
-    def update(self, currency_pair, step, equity, position, action):
-        # Only store last 100 data points to improve performance
-        if len(self.steps[currency_pair]) >= 100:
+    def update(self, currency_pair, step, balance, equity, position, action):
+        # Keep up to 100 data points for better visualization
+        max_points = 100
+        if len(self.steps[currency_pair]) >= max_points:
             self.steps[currency_pair].pop(0)
             self.balances[currency_pair].pop(0)
+            self.equities[currency_pair].pop(0)
             self.positions[currency_pair].pop(0)
             self.actions[currency_pair].pop(0)
         
         # Update data
         self.steps[currency_pair].append(step)
-        self.balances[currency_pair].append(equity)  # Using equity here, not balance
+        self.balances[currency_pair].append(balance)
+        self.equities[currency_pair].append(equity)
         self.positions[currency_pair].append(position)
         self.actions[currency_pair].append(action)
         
@@ -382,40 +415,47 @@ class TrainingVisualizer:
         self.figs[currency_pair].clear()
         self.figs[currency_pair].suptitle(f"{currency_pair} Trading Performance", fontsize=14)
         
-        # Create subplots
-        ax1 = self.figs[currency_pair].add_subplot(211)  # Equity plot
-        ax2 = self.figs[currency_pair].add_subplot(212)  # Position plot
+        # Create subplots - 3 rows now
+        ax1 = self.figs[currency_pair].add_subplot(311)  # Balance plot
+        ax2 = self.figs[currency_pair].add_subplot(312)  # Equity plot
+        ax3 = self.figs[currency_pair].add_subplot(313)  # Position plot
         
-        # Plot equity
-        ax1.plot(self.steps[currency_pair], self.balances[currency_pair], 'cyan', linewidth=2)
-        ax1.set_ylabel('Equity')
-        ax1.set_title(f'Account Balance - Current: {equity:.2f}')
+        # Plot balance (only changes when trade is closed)
+        ax1.plot(self.steps[currency_pair], self.balances[currency_pair], 'white', linewidth=2)
+        ax1.set_ylabel('Balance')
+        ax1.set_title(f'Account Balance - Current: {balance:.2f}')
+        
+        # Plot equity (changes continuously with unrealized P&L)
+        ax2.plot(self.steps[currency_pair], self.equities[currency_pair], 'cyan', linewidth=2)
+        ax2.set_ylabel('Equity')
+        ax2.set_title(f'Equity - Current: {equity:.2f}')
         
         # Plot position and actions
-        ax2.plot(self.steps[currency_pair], self.positions[currency_pair], 'lime', linewidth=2)
+        ax3.plot(self.steps[currency_pair], self.positions[currency_pair], 'lime', linewidth=2)
         
         # Color the action points
         action_colors = {0: 'gray', 1: 'lime', 2: 'red', 3: 'cyan'}  # Hold, Buy, Sell, Close
         for i, a in enumerate(self.actions[currency_pair]):
-            ax2.scatter(self.steps[currency_pair][i], self.positions[currency_pair][i], 
+            ax3.scatter(self.steps[currency_pair][i], self.positions[currency_pair][i], 
                        c=action_colors.get(a, 'white'), marker='o', alpha=0.7 if a == 0 else 1.0)
         
-        ax2.set_xlabel('Steps')
-        ax2.set_ylabel('Position')
-        ax2.set_yticks([-1, 0, 1])
-        ax2.set_yticklabels(['Short', 'None', 'Long'])
-        ax2.set_title('Position and Actions')
+        ax3.set_xlabel('Steps')
+        ax3.set_ylabel('Position')
+        ax3.set_yticks([-1, 0, 1])
+        ax3.set_yticklabels(['Short', 'None', 'Long'])
+        ax3.set_title('Position and Actions')
         
         # Add legend - create patches for legend
         legend_elements = [
-            patches.Patch(facecolor='lime', label='Buy'),
-            patches.Patch(facecolor='red', label='Sell'),
-            patches.Patch(facecolor='cyan', label='Close'),
-            patches.Patch(facecolor='gray', label='Hold')
+            patches.Patch(facecolor='lime', edgecolor='lime', label='Buy'),
+            patches.Patch(facecolor='red', edgecolor='red', label='Sell'),
+            patches.Patch(facecolor='cyan', edgecolor='cyan', label='Close'),
+            patches.Patch(facecolor='gray', edgecolor='gray', label='Hold')
         ]
+        ax3.legend(handles=legend_elements, loc='lower right')
         
-        # Add the legend to the position subplot
-        ax2.legend(handles=legend_elements, loc='lower right')
+        # Adjust layout
+        self.figs[currency_pair].tight_layout()
         
         # Update the figure
         self.figs[currency_pair].canvas.draw()
@@ -545,3 +585,9 @@ if __name__ == "__main__":
     # Train models
     print("Starting training of SAC models for currency pairs:", CURRENCY_PAIRS)
     model = train_model(CURRENCY_PAIRS)
+    
+    # Test the trained model
+    for pair in CURRENCY_PAIRS:
+        trades, final_balance = test_model(model, pair)
+        print(f"\nFinal balance for {pair}: {final_balance:.2f}")
+        print(f"Number of trades: {len(trades)}")
