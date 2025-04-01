@@ -41,6 +41,10 @@ def test_endpoint():
                 # Convert timestamp to datetime
                 df['time'] = pd.to_datetime(df['time'], format='%Y.%m.%d %H:%M:%S')
                 
+                # Add day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
+                # Pandas weekday is 0=Monday, so we need to adjust to make Sunday=0
+                df['day_of_week'] = (df['time'].dt.weekday + 1) % 7
+                
                 # Add the timeframe column
                 df['timeframe'] = timeframe
                 
