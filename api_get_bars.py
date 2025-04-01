@@ -29,13 +29,11 @@ def test_endpoint():
             
             print(f"\n===== RECEIVED DATA FOR SYMBOL: {symbol} =====")
             
-            # Create a dictionary to store DataFrames for each timeframe
-            dataframes = {}
+            # List to store DataFrames for each timeframe for concatenation
+            dfs_list = []
             
             # Process each timeframe
             for timeframe, bars in timeframes_data.items():
-                print(f"\n----- Timeframe: {timeframe} - {len(bars)} bars -----")
-                
                 # Convert the bars to a DataFrame
                 df = pd.DataFrame(bars)
                 
@@ -45,13 +43,17 @@ def test_endpoint():
                 # Add the timeframe column
                 df['timeframe'] = timeframe
                 
-                # Store the DataFrame
-                dataframes[timeframe] = df
+                # Add to list for concatenation
+                dfs_list.append(df)
+            
+            # Concatenate all dataframes into a single dataframe
+            if dfs_list:
+                combined_df = pd.concat(dfs_list, ignore_index=True)
                 
-                # Display the DataFrame
+                # Display the combined DataFrame
                 pd.set_option('display.max_columns', None)
                 pd.set_option('display.width', 1000)
-                print(df)
+                print(combined_df)
                        
             print("\n===== DATA PROCESSING COMPLETE =====")
             return jsonify({"response": f"GOT IT! Successfully received and processed data for {symbol} with {len(timeframes_data)} timeframes"})
