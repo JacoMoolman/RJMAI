@@ -38,38 +38,61 @@ def test_endpoint():
             ##### PROCESS TIME #######
             ##### PROCESS TIME #######
             ##### PROCESS TIME #######
+            # Timeframe mapping to normalized values between 0 and 1
+            timeframe_map = {
+                'M1': 0.0,    # 1-minute (minimum)
+                'M5': 0.2,    # 5-minute
+                'M30': 0.4,   # 30-minute
+                'H1': 0.6,    # 1-hour
+                'H4': 0.8,    # 4-hour
+                'D1': 1.0     # Daily (maximum)
+            }
+            
             # Process each timeframe
             for timeframe, bars in timeframes_data.items():
-                # Convert the bars to a DataFrame
-                df = pd.DataFrame(bars)
-                
-                # Convert timestamp to datetime
-                df['time'] = pd.to_datetime(df['time'], format='%Y.%m.%d %H:%M:%S')
-                
-                # Add day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
-                # Pandas weekday is 0=Monday, so we need to adjust to make Sunday=0
-                df['day_of_week'] = (df['time'].dt.weekday + 1) % 7
-                
-                # Extract time components (remove seconds, split hour and minute)
-                df['hour'] = df['time'].dt.hour
-                df['minute'] = df['time'].dt.minute
-                
-                # Extract date components (drop year, split month and day)
-                df['month'] = df['time'].dt.month
-                df['day'] = df['time'].dt.day
-                
-                # Create cyclical features for month
-                df['month_sin'] = np.sin(2 * np.pi * df['month']/12)
-                df['month_cos'] = np.cos(2 * np.pi * df['month']/12)
-                
-                # Drop the original time and month columns
-                df = df.drop(['time', 'month'], axis=1)
-                
-                # Add the timeframe column
-                df['timeframe'] = timeframe
-                
-                # Add to list for concatenation
-                dfs_list.append(df)
+                if timeframe in timeframe_map:
+                    # Convert the bars to a DataFrame
+                    df = pd.DataFrame(bars)
+                    
+                    # Convert timestamp to datetime
+                    df['time'] = pd.to_datetime(df['time'], format='%Y.%m.%d %H:%M:%S')
+                    
+                    # Add day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
+                    # Pandas weekday is 0=Monday, so we need to adjust to make Sunday=0
+                    raw_day_of_week = (df['time'].dt.weekday + 1) % 7
+                    
+                    # Normalize day of week between 0 and 1
+                    df['day_of_week'] = raw_day_of_week / 6.0  # Divide by (7-1) to normalize
+                    
+                    # Extract time components (remove seconds, split hour and minute)
+                    df['hour'] = df['time'].dt.hour
+                    df['minute'] = df['time'].dt.minute
+                    
+                    # Normalize hour and minute between 0 and 1
+                    df['hour'] = df['hour'] / 23.0  # Divide by (24-1) to normalize
+                    df['minute'] = df['minute'] / 59.0  # Divide by (60-1) to normalize
+                    
+                    # Extract date components (drop year, split month and day)
+                    df['month'] = df['time'].dt.month
+                    df['day'] = df['time'].dt.day
+                    
+                    # Normalize day (of month) between 0 and 1
+                    # Using 31 as the maximum possible day to normalize
+                    df['day'] = df['day'] / 31.0
+                    
+                    # Create cyclical features for month
+                    df['month_sin'] = np.sin(2 * np.pi * df['month']/12)
+                    df['month_cos'] = np.cos(2 * np.pi * df['month']/12)
+                    
+                    # Drop the original time and month columns
+                    df = df.drop(['time', 'month'], axis=1)
+                    
+                    # Add the timeframe column and convert to numerical
+                    df['timeframe'] = timeframe
+                    df['timeframe'] = df['timeframe'].map(timeframe_map)
+                    
+                    # Add to list for concatenation
+                    dfs_list.append(df)
                 
             ##### PROCESS TIME #######
             ##### PROCESS TIME #######
@@ -81,7 +104,7 @@ def test_endpoint():
                 
                 # Display the combined DataFrame with truncation (showing ... in the middle)
                 pd.set_option('display.max_columns', None)
-                pd.set_option('display.max_rows', 10)  # Show limited rows with ... in the middle
+                pd.set_option('display.max_rows', None)  # Show limited rows with ... in the middle
                 pd.set_option('display.width', 1000)
                 print(combined_df)
                        
