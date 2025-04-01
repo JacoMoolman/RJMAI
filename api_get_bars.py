@@ -50,8 +50,9 @@ def test_endpoint():
             if dfs_list:
                 combined_df = pd.concat(dfs_list, ignore_index=True)
                 
-                # Display the combined DataFrame
+                # Display the combined DataFrame - show ALL rows and columns
                 pd.set_option('display.max_columns', None)
+                pd.set_option('display.max_rows', None)  # Show all rows
                 pd.set_option('display.width', 1000)
                 print(combined_df)
                        
