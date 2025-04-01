@@ -3,6 +3,7 @@ import json
 import re
 import pandas as pd
 import datetime
+import random
 
 app = Flask(__name__)
 
@@ -57,7 +58,12 @@ def test_endpoint():
                 print(combined_df)
                        
             print("\n===== DATA PROCESSING COMPLETE =====")
-            return jsonify({"response": f"GOT IT! Successfully received and processed data for {symbol} with {len(timeframes_data)} timeframes"})
+            
+            # Generate random trade instruction (B=Buy, S=Sell, H=Hold, C=Close)
+            trade_instruction = random.choice(["B", "S", "H", "C"])
+            
+            print(f"\n===== SENDING TRADE INSTRUCTION: {trade_instruction} =====")                        
+            return jsonify({"response": f"INSTRUCTION: {trade_instruction}"})
         else:
             print("Invalid data format - missing 'symbol' or 'data' fields")
             return jsonify({"response": "Error: Invalid data format"})
