@@ -4,6 +4,8 @@ import re
 import pandas as pd
 import datetime
 import random
+import math
+import numpy as np
 
 app = Flask(__name__)
 
@@ -33,6 +35,9 @@ def test_endpoint():
             # List to store DataFrames for each timeframe for concatenation
             dfs_list = []
             
+            ##### PROCESS TIME #######
+            ##### PROCESS TIME #######
+            ##### PROCESS TIME #######
             # Process each timeframe
             for timeframe, bars in timeframes_data.items():
                 # Convert the bars to a DataFrame
@@ -45,19 +50,38 @@ def test_endpoint():
                 # Pandas weekday is 0=Monday, so we need to adjust to make Sunday=0
                 df['day_of_week'] = (df['time'].dt.weekday + 1) % 7
                 
+                # Extract time components (remove seconds, split hour and minute)
+                df['hour'] = df['time'].dt.hour
+                df['minute'] = df['time'].dt.minute
+                
+                # Extract date components (drop year, split month and day)
+                df['month'] = df['time'].dt.month
+                df['day'] = df['time'].dt.day
+                
+                # Create cyclical features for month
+                df['month_sin'] = np.sin(2 * np.pi * df['month']/12)
+                df['month_cos'] = np.cos(2 * np.pi * df['month']/12)
+                
+                # Drop the original time and month columns
+                df = df.drop(['time', 'month'], axis=1)
+                
                 # Add the timeframe column
                 df['timeframe'] = timeframe
                 
                 # Add to list for concatenation
                 dfs_list.append(df)
+                
+            ##### PROCESS TIME #######
+            ##### PROCESS TIME #######
+            ##### PROCESS TIME #######
             
             # Concatenate all dataframes into a single dataframe
             if dfs_list:
                 combined_df = pd.concat(dfs_list, ignore_index=True)
                 
-                # Display the combined DataFrame - show ALL rows and columns
+                # Display the combined DataFrame with truncation (showing ... in the middle)
                 pd.set_option('display.max_columns', None)
-                pd.set_option('display.max_rows', None)  # Show all rows
+                pd.set_option('display.max_rows', 10)  # Show limited rows with ... in the middle
                 pd.set_option('display.width', 1000)
                 print(combined_df)
                        
