@@ -9,6 +9,8 @@ import numpy as np
 
 app = Flask(__name__)
 
+cache = {}
+
 @app.route('/test', methods=['POST'])
 def test_endpoint():
     print("\n===== NEW REQUEST RECEIVED =====")
@@ -101,6 +103,35 @@ def test_endpoint():
             # Concatenate all dataframes into a single dataframe
             if dfs_list:
                 combined_df = pd.concat(dfs_list, ignore_index=True)
+
+                # --- START NORMALIZATION BLOCK ---
+                cols_to_normalize = ['open', 'high', 'low', 'close', 'volume']
+                normalized_dfs = []
+                grouped = combined_df.groupby('timeframe')
+
+                for name, group in grouped:
+                    group_copy = group.copy()
+                    min_vals = group_copy[cols_to_normalize].min()
+                    max_vals = group_copy[cols_to_normalize].max()
+                    range_vals = max_vals - min_vals
+
+                    # Handle columns where min == max (range is 0) to avoid division by zero
+                    # Set normalized value to 0 in this case (or could use 0.5)
+                    for col in cols_to_normalize:
+                        if range_vals[col] == 0:
+                            group_copy[col] = 0.0
+                        else:
+                            group_copy[col] = (group_copy[col] - min_vals[col]) / range_vals[col]
+                
+                    normalized_dfs.append(group_copy)
+            
+                # Recombine the normalized groups
+                if normalized_dfs:
+                     combined_df = pd.concat(normalized_dfs).sort_index() # Sort index to maintain original order if needed
+                # --- END NORMALIZATION BLOCK ---
+                
+                # Cache the processed dataframe
+                cache[symbol] = combined_df
                 
                 # Display the combined DataFrame with truncation (showing ... in the middle)
                 pd.set_option('display.max_columns', None)
