@@ -27,9 +27,20 @@ def test_endpoint():
             # Parse the fixed JSON data
             data = json.loads(fixed_data)
         
+        # Extract symbol, balance, and PnL first
+        symbol = data.get('symbol', 'UNKNOWN') # Use .get for safety
+        account_balance = data.get('account_balance', 0.0) # Default to 0.0 if missing
+        open_trade_pnl = data.get('open_trade_pnl', 0.0)   # Default to 0.0 if missing
+
+        # Display balance and PnL
+        print(f"\n----- Account Info ----- ")
+        print(f"Symbol: {symbol}")
+        print(f"Account Balance: {account_balance:.2f}")
+        print(f"Open Trade PnL: {open_trade_pnl:.2f}")
+        print(f"-------------------------")
+
         # Process and display forex data using pandas
-        if 'symbol' in data and 'data' in data:
-            symbol = data['symbol']
+        if 'data' in data:
             timeframes_data = data['data']
             
             print(f"\n===== RECEIVED DATA FOR SYMBOL: {symbol} =====")
@@ -135,7 +146,7 @@ def test_endpoint():
                 
                 # Display the combined DataFrame with truncation (showing ... in the middle)
                 pd.set_option('display.max_columns', None)
-                pd.set_option('display.max_rows', None)  # Show limited rows with ... in the middle
+                pd.set_option('display.max_rows', 10)  # Show limited rows with ... in the middle
                 pd.set_option('display.width', 1000)
                 print(combined_df)
                        

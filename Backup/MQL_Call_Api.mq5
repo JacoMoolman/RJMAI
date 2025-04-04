@@ -5,16 +5,28 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, User"
 #property link      "https://www.mql5.com"
-#property version   "1.06" // Incremented version for correction
+#property version   "1.07" // Version incremented for trading logic
+
+//--- Include Trade library
+#include <Trade\Trade.mqh>
 
 //--- Input parameters for bar counts per timeframe
+input group "Data Fetching Settings"
 input int InpM1Bars  = 200; // Number of M1 bars to fetch
-input int InpM5Bars  = 150;  // Number of M5 bars to fetch
-input int InpM30Bars = 100;  // Number of M30 bars to fetch
+input int InpM5Bars  = 150; // Number of M5 bars to fetch
+input int InpM30Bars = 100; // Number of M30 bars to fetch
 input int InpH1Bars  = 80;  // Number of H1 bars to fetch
 input int InpH4Bars  = 50;  // Number of H4 bars to fetch
 input int InpD1Bars  = 20;  // Number of D1 bars to fetch
-// Add more inputs if you include more timeframes below
+
+//--- Input parameters for Trading
+input group "Trading Settings"
+input double InpLots          = 0.01;     // Trade Lot Size
+input ulong  InpMagicNumber   = 12345;    // Magic Number for trades
+input uint   InpSlippage      = 10;       // Slippage in points
+input uint   InpStopLossPips  = 500;       // Stop Loss in pips (0 = disabled) - Increased default
+input uint   InpTakeProfitPips= 1000;      // Take Profit in pips (0 = disabled) - Increased default
+input string InpApiUrl        = "http://localhost:5000/test"; // API Endpoint URL
 
 //+------------------------------------------------------------------+
 //| DLL Imports                                                      |
@@ -26,23 +38,34 @@ input int InpD1Bars  = 20;  // Number of D1 bars to fetch
    string Post(string url, string data);
 #import
 
-// Static variable to track the time of the last bar on the chart's timeframe
-static datetime lastBarTime = 0;
+//+------------------------------------------------------------------+
+//| Global Variables                                                 |
+//+------------------------------------------------------------------+
+CTrade trade; // Trade execution object
+static datetime lastBarTime = 0; // Tracks the last bar time for new bar detection
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   Print("API Test EA initializing...");
-   // Corrected PrintFormat to exclude M15
-   PrintFormat("Bar Counts: M1=%d, M5=%d, M30=%d, H1=%d, H4=%d, D1=%d",
+   Print("API Trading EA initializing...");
+   PrintFormat("Data Bar Counts: M1=%d, M5=%d, M30=%d, H1=%d, H4=%d, D1=%d",
                InpM1Bars, InpM5Bars, InpM30Bars, InpH1Bars, InpH4Bars, InpD1Bars);
-   // Initialize lastBarTime to prevent sending data immediately on the very first tick
-   // We'll let the first new bar trigger the send in OnTick
+   PrintFormat("Trading Settings: Lots=%.2f, Magic=%d, SL=%d pips, TP=%d pips, Slippage=%d points",
+               InpLots, InpMagicNumber, InpStopLossPips, InpTakeProfitPips, InpSlippage);
+   Print("API URL: ", InpApiUrl);
+
+   //--- Setup Trade object
+   trade.SetExpertMagicNumber(InpMagicNumber);
+   trade.SetDeviationInPoints(InpSlippage);
+   trade.SetTypeFillingBySymbol(Symbol()); // Important for execution type (FOK/IOC)
+
+   //--- Initialize lastBarTime
    lastBarTime = iTime(Symbol(), Period(), 0);
    Print("Initial bar time set to: ", TimeToString(lastBarTime));
-   Print("API Test EA initialized!");
+
+   Print("API Trading EA initialized!");
    return(INIT_SUCCEEDED);
 }
 
@@ -51,7 +74,7 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-   Print("API Test EA deinitialized! Reason: ", reason);
+   Print("API Trading EA deinitialized! Reason: ", reason);
    lastBarTime = 0; // Reset static variable
 }
 
@@ -66,11 +89,32 @@ void OnTick()
    // Check if a new bar has started
    if (currentBarTime != lastBarTime)
    {
-      PrintFormat("New bar detected on %s. Previous: %s, Current: %s. Sending data...",
-                  TimeframeToString(Period()), TimeToString(lastBarTime), TimeToString(currentBarTime));
+      // --- Check if connected before proceeding ---
+      if(TerminalInfoInteger(TERMINAL_CONNECTED) && !MQLInfoInteger(MQL_DEBUG)) // Don't trade if not connected or debugging
+      {
+          PrintFormat("New bar detected on %s. Previous: %s, Current: %s. Processing...",
+                      TimeframeToString(Period()), TimeToString(lastBarTime), TimeToString(currentBarTime));
 
-      // --- Send the multi-timeframe historical data ---
-      SendHistoricalData();
+          // --- Send data and get instructions ---
+          string instruction = SendDataAndGetInstruction(); // Changed function name for clarity
+
+          // --- Process the received instruction ---
+          if(instruction != "" && instruction != "Error") // Ensure we got a valid instruction string
+          {
+              ProcessInstruction(instruction);
+          }
+          else if (instruction == "Error")
+          {
+              Print("Error retrieving or parsing instruction from API.");
+          }
+          // If instruction is empty, it means no data was sent (e.g., first_tf remained true)
+
+      }
+      else
+      {
+          if(!TerminalInfoInteger(TERMINAL_CONNECTED)) Print("Terminal not connected. Skipping cycle.");
+          if(MQLInfoInteger(MQL_DEBUG)) Print("Debugger attached. Skipping cycle.");
+      }
       // ---------------------------------------------
 
       // Update the time of the last known bar
@@ -79,15 +123,34 @@ void OnTick()
 }
 
 //+------------------------------------------------------------------+
-//| Function to fetch and send historical data                       |
+//| Function to fetch data, send to API, and return instruction    |
 //+------------------------------------------------------------------+
-void SendHistoricalData()
+string SendDataAndGetInstruction()
 {
-   string url = "http://localhost:5000/test"; // Your API endpoint
+   string url = InpApiUrl; // Use input parameter for URL
    string symbol_name = Symbol();
+   string instruction = ""; // Initialize instruction string
+
+   // --- Get Account Information ---
+   double account_balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double open_trade_pnl = 0.0;
+   int total_positions = PositionsTotal();
+   for(int i = total_positions - 1; i >= 0; i--) // Loop backwards is safer if closing positions
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(PositionSelectByTicket(ticket)) // Select position to get details
+      {
+         if(PositionGetString(POSITION_SYMBOL) == symbol_name && PositionGetInteger(POSITION_MAGIC) == InpMagicNumber)
+         {
+            open_trade_pnl = PositionGetDouble(POSITION_PROFIT);
+            // PrintFormat("Found open position #%d for %s, PnL: %.2f", ticket, symbol_name, open_trade_pnl); // Debugging
+            break; // Found the relevant position for this symbol/magic
+         }
+      }
+   }
+   // PrintFormat("Account Balance: %.2f, Open Trade PnL for %s: %.2f", account_balance, symbol_name, open_trade_pnl); // Debugging
 
    // Define the timeframes to fetch using the ENUM values
-   // **Removed PERIOD_M15**
    ENUM_TIMEFRAMES timeframes_to_send[] =
    {
       PERIOD_D1,
@@ -100,8 +163,10 @@ void SendHistoricalData()
 
    // --- Build the JSON Payload ---
    string json_payload = "{";
-   json_payload += "\"symbol\": \"" + symbol_name + "\",";
-   json_payload += "\"data\": {";
+   json_payload += "\"symbol\": \"" + symbol_name + "\","; // Symbol first
+   json_payload += "\"account_balance\": " + DoubleToString(account_balance, 2) + ","; // Add balance
+   json_payload += "\"open_trade_pnl\": " + DoubleToString(open_trade_pnl, 2) + ",";   // Add PnL
+   json_payload += "\"data\": {"; // Now the data block
 
    int tf_count = ArraySize(timeframes_to_send);
    bool first_tf = true; // Flag to handle commas between timeframes
@@ -110,10 +175,10 @@ void SendHistoricalData()
    for (int i = 0; i < tf_count; i++)
    {
       ENUM_TIMEFRAMES current_tf = timeframes_to_send[i];
-      string tf_string = TimeframeToString(current_tf); // Helper function
-      int bars_to_fetch_for_this_tf = 0; // Variable to hold the bar count for the current TF
+      string tf_string = TimeframeToString(current_tf);
+      int bars_to_fetch_for_this_tf = 0;
 
-      // --- Determine how many bars to fetch based on the current timeframe ---
+      // --- Determine how many bars to fetch ---
       switch(current_tf)
       {
          case PERIOD_M1:  bars_to_fetch_for_this_tf = InpM1Bars;  break;
@@ -122,99 +187,204 @@ void SendHistoricalData()
          case PERIOD_H1:  bars_to_fetch_for_this_tf = InpH1Bars;  break;
          case PERIOD_H4:  bars_to_fetch_for_this_tf = InpH4Bars;  break;
          case PERIOD_D1:  bars_to_fetch_for_this_tf = InpD1Bars;  break;
-         // Add cases for other timeframes if you include them
-         default:
-            PrintFormat("Warning: No input bar count defined for timeframe %s. Skipping.", tf_string);
-            continue; // Skip to the next timeframe in the loop
-      }
-      // --- End of bar count determination ---
-
-      // Skip if user set bar count to 0 or less
-      if (bars_to_fetch_for_this_tf <= 0)
-      {
-         PrintFormat("Skipping timeframe %s because requested bar count is %d.", tf_string, bars_to_fetch_for_this_tf);
-         continue;
+         default: PrintFormat("Warning: No input bar count defined for timeframe %s. Skipping.", tf_string); continue;
       }
 
-      MqlRates rates_array[]; // Array to store bar data
-      ArraySetAsSeries(rates_array, true); // Set array as series (index 0 is the current bar)
+      if (bars_to_fetch_for_this_tf <= 0) { PrintFormat("Skipping timeframe %s (bar count <= 0).", tf_string); continue; }
 
-      // Copy historical rates for the specific timeframe using the determined bar count
+      MqlRates rates_array[];
+      ArraySetAsSeries(rates_array, true);
       int copied_count = CopyRates(symbol_name, current_tf, 0, bars_to_fetch_for_this_tf, rates_array);
 
-      // Check if we got any data for this specific timeframe
       if (copied_count > 0)
       {
-         PrintFormat("Fetched %d bars for %s (requested %d)", copied_count, tf_string, bars_to_fetch_for_this_tf);
-
-         // Add comma before this timeframe's data if it's not the first one
-         if (!first_tf)
-         {
-            json_payload += ",";
-         }
-         first_tf = false; // Reset flag after the first successful timeframe
-
-         // Start the JSON array for this timeframe's bars
+         // PrintFormat("Fetched %d bars for %s (requested %d)", copied_count, tf_string, bars_to_fetch_for_this_tf); // Less verbose logging now
+         if (!first_tf) { json_payload += ","; }
+         first_tf = false;
          json_payload += "\"" + tf_string + "\": [";
-
-         // Loop through the copied bars (newest [0] to oldest [copied_count-1])
          for (int j = 0; j < copied_count; j++)
          {
-            // Start bar object
             json_payload += "{";
             json_payload += "\"time\": "   + (string)rates_array[j].time + ",";
             json_payload += "\"open\": "   + DoubleToString(rates_array[j].open, _Digits) + ",";
             json_payload += "\"high\": "   + DoubleToString(rates_array[j].high, _Digits) + ",";
             json_payload += "\"low\": "    + DoubleToString(rates_array[j].low, _Digits) + ",";
             json_payload += "\"close\": "  + DoubleToString(rates_array[j].close, _Digits) + ",";
-            json_payload += "\"volume\": " + (string)rates_array[j].tick_volume + ","; // Using tick_volume
+            json_payload += "\"volume\": " + (string)rates_array[j].tick_volume + ",";
             json_payload += "\"spread\": " + (string)rates_array[j].spread;
-            // Close bar object
             json_payload += "}";
-
-            // Add comma between bar objects if it's not the last bar
-            if (j < copied_count - 1)
-            {
-               json_payload += ",";
-            }
+            if (j < copied_count - 1) { json_payload += ","; }
          }
-         // Close the JSON array for this timeframe
          json_payload += "]";
       }
-      else // Handle cases where no bars were copied for this timeframe
-      {
-         int error_code = GetLastError();
-         PrintFormat("Warning: Could not fetch bars for %s. Copied: %d (requested: %d), Error code: %d. Skipping timeframe.",
-                     tf_string, copied_count, bars_to_fetch_for_this_tf, error_code);
-         // Reset the last error if needed, although CopyRates usually does this
-         // ResetLastError();
-      }
-      Sleep(50); // Small delay between fetching different timeframes
+      else { PrintFormat("Warning: Could not fetch bars for %s. Copied: %d (req: %d), Err: %d. Skipping.", tf_string, copied_count, bars_to_fetch_for_this_tf, GetLastError()); }
 
-   } // End loop through timeframes
+      Sleep(20); // Reduce sleep slightly, still good practice
+   }
 
-   // Close the data object and the main JSON object
-   json_payload += "}"; // Close "data" object
-   json_payload += "}"; // Close main JSON object
+   json_payload += "}}"; // Close "data" and main object
 
-   // --- Send the JSON Payload ---
-   // Only send if we actually added some timeframe data
-   if (!first_tf) // first_tf will be false if at least one timeframe was added
+   // --- Send Payload and Parse Response ---
+   if (!first_tf) // Only send if data was added
    {
         Print("Sending API request to: ", url);
-        Print("Payload snippet (first 200 chars): ", StringSubstr(json_payload, 0, 200)); // Print snippet for verification
-        Print("Payload length: ", StringLen(json_payload)); // Print length as a check
+        // Print("Payload snippet: ", StringSubstr(json_payload, 0, 200)); // Optional: uncomment for debugging
+        Print("Payload length: ", StringLen(json_payload));
 
         string response = Post(url, json_payload);
+        Print("API Response Raw: ", response); // Log the raw response
 
-        // Print the response from the API server
-        Print("API Response: ", response);
+        // --- Parse the instruction ---
+        string search_key = "\"INSTRUCTION: "; // Includes the space after the colon
+        int instruction_pos = StringFind(response, search_key);
+
+        if(instruction_pos >= 0)
+        {
+           // Find the position after "INSTRUCTION: "
+           int start_pos = instruction_pos + StringLen(search_key);
+           // Find the closing quote " after the instruction character
+           int end_pos = StringFind(response, "\"", start_pos);
+
+           if(end_pos > start_pos)
+           {
+               // Extract the single character instruction
+               instruction = StringSubstr(response, start_pos, end_pos - start_pos);
+               // Trim potential whitespace just in case (though unlikely with this format)
+               StringTrimLeft(instruction);
+               StringTrimRight(instruction);
+               Print("Parsed Instruction: '", instruction, "'"); // Log parsed instruction clearly
+           }
+           else
+           {
+               Print("Error: Could not find closing quote for instruction in response: ", response);
+               instruction = "Error";
+           }
+        }
+        else
+        {
+            Print("Error: 'INSTRUCTION: ' key not found in response: ", response);
+            instruction = "Error";
+        }
    }
    else
    {
        Print("No data fetched for any timeframe. API request skipped.");
+       instruction = ""; // No instruction if nothing was sent
+   }
+
+   return instruction;
+}
+
+//+------------------------------------------------------------------+
+//| Function to process the trading instruction from the API         |
+//+------------------------------------------------------------------+
+void ProcessInstruction(string instruction)
+{
+   string symbol = Symbol();
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
+
+   if(ask == 0 || bid == 0 || point == 0) // Cannot trade if prices or point size are invalid
+   {
+       Print("Error: Invalid market info (Ask/Bid/Point). Cannot process instruction.");
+       return;
+   }
+
+   // --- Check for existing position for THIS symbol and THIS magic number ---
+   bool position_exists = false;
+   if(PositionSelect(symbol)) // Selects position based on symbol
+   {
+      // Check if the selected position's magic number matches our EA's magic number
+      if(PositionGetInteger(POSITION_MAGIC) == InpMagicNumber)
+      {
+         position_exists = true;
+      }
+   }
+
+   // --- Act on Instruction ---
+   if(instruction == "B") // Buy Instruction
+   {
+      if(position_exists)
+      {
+         Print("Instruction 'B' received, but a position (Magic: ", InpMagicNumber, ") already exists for ", symbol, ". Holding.");
+      }
+      else
+      {
+         Print("Instruction 'B' received. Opening BUY order for ", symbol);
+         double sl = 0.0;
+         double tp = 0.0;
+         // Calculate SL/TP only if pips > 0
+         if(InpStopLossPips > 0) sl = ask - InpStopLossPips * point;
+         if(InpTakeProfitPips > 0) tp = ask + InpTakeProfitPips * point;
+
+         // Use trade object to open position
+         if(!trade.Buy(InpLots, symbol, ask, sl, tp, "Buy signal from API"))
+         {
+            Print("Error Opening Buy Order: ", trade.ResultRetcode(), " - ", trade.ResultComment());
+         }
+         else
+         {
+            Print("Buy Order Opened Successfully. Ticket: ", trade.ResultOrder());
+         }
+      }
+   }
+   else if(instruction == "S") // Sell Instruction
+   {
+      if(position_exists)
+      {
+         Print("Instruction 'S' received, but a position (Magic: ", InpMagicNumber, ") already exists for ", symbol, ". Holding.");
+      }
+      else
+      {
+         Print("Instruction 'S' received. Opening SELL order for ", symbol);
+         double sl = 0.0;
+         double tp = 0.0;
+         // Calculate SL/TP only if pips > 0
+         if(InpStopLossPips > 0) sl = bid + InpStopLossPips * point;
+         if(InpTakeProfitPips > 0) tp = bid - InpTakeProfitPips * point;
+
+         // Use trade object to open position
+         if(!trade.Sell(InpLots, symbol, bid, sl, tp, "Sell signal from API"))
+         {
+            Print("Error Opening Sell Order: ", trade.ResultRetcode(), " - ", trade.ResultComment());
+         }
+         else
+         {
+            Print("Sell Order Opened Successfully. Ticket: ", trade.ResultOrder());
+         }
+      }
+   }
+   else if(instruction == "C") // Close Instruction
+   {
+      if(position_exists)
+      {
+         Print("Instruction 'C' received. Closing position for ", symbol, " (Magic: ", InpMagicNumber, ")");
+         // CTrade::PositionClose will automatically close the position selected by PositionSelect if magic matches
+         if(!trade.PositionClose(symbol)) // Closes the position for the specified symbol (uses magic number set in OnInit)
+         {
+            Print("Error Closing Position: ", trade.ResultRetcode(), " - ", trade.ResultComment());
+         }
+         else
+         {
+            Print("Position Closed Successfully. Result: ", trade.ResultComment()); // ResultComment often has details on close
+         }
+      }
+      else
+      {
+         Print("Instruction 'C' received, but no open position found for ", symbol, " with Magic ", InpMagicNumber, ".");
+      }
+   }
+   else if(instruction == "H") // Hold Instruction
+   {
+      Print("Instruction 'H' received. No action taken.");
+   }
+   else // Invalid Instruction
+   {
+      Print("Warning: Received unknown or invalid instruction '", instruction, "'. No action taken.");
    }
 }
+
 //+------------------------------------------------------------------+
 //| Helper function to convert ENUM_TIMEFRAMES to string             |
 //+------------------------------------------------------------------+
