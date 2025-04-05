@@ -1,21 +1,11 @@
-//+------------------------------------------------------------------+
-//|                                        JMAI-AllTimeFrames.mq5 |
-//|                                            Copyright 2025, User |
-//|                                             https://www.mql5.com |
-//+------------------------------------------------------------------+
-#property copyright "Copyright 2025, User"
-#property link      "https://www.mql5.com"
-#property version   "1.07" // Version incremented for trading logic
-
 //--- Include Trade library
 #include <Trade\Trade.mqh>
 
 //--- Input parameters for bar counts per timeframe
 input group "Data Fetching Settings"
-input int InpM1Bars  = 200; // Number of M1 bars to fetch
-input int InpM5Bars  = 150; // Number of M5 bars to fetch
-input int InpM30Bars = 100; // Number of M30 bars to fetch
-input int InpH1Bars  = 80;  // Number of H1 bars to fetch
+input int InpM5Bars  = 300; // Number of M5 bars to fetch
+input int InpM30Bars = 200; // Number of M30 bars to fetch
+input int InpH1Bars  = 100;  // Number of H1 bars to fetch
 input int InpH4Bars  = 50;  // Number of H4 bars to fetch
 input int InpD1Bars  = 20;  // Number of D1 bars to fetch
 
@@ -24,8 +14,6 @@ input group "Trading Settings"
 input double InpLots          = 0.01;     // Trade Lot Size
 input ulong  InpMagicNumber   = 12345;    // Magic Number for trades
 input uint   InpSlippage      = 10;       // Slippage in points
-input uint   InpStopLossPips  = 500;       // Stop Loss in pips (0 = disabled) - Increased default
-input uint   InpTakeProfitPips= 1000;      // Take Profit in pips (0 = disabled) - Increased default
 input string InpApiUrl        = "http://localhost:5000/test"; // API Endpoint URL
 
 //+------------------------------------------------------------------+
@@ -50,10 +38,10 @@ static datetime lastBarTime = 0; // Tracks the last bar time for new bar detecti
 int OnInit()
 {
    Print("API Trading EA initializing...");
-   PrintFormat("Data Bar Counts: M1=%d, M5=%d, M30=%d, H1=%d, H4=%d, D1=%d",
-               InpM1Bars, InpM5Bars, InpM30Bars, InpH1Bars, InpH4Bars, InpD1Bars);
-   PrintFormat("Trading Settings: Lots=%.2f, Magic=%d, SL=%d pips, TP=%d pips, Slippage=%d points",
-               InpLots, InpMagicNumber, InpStopLossPips, InpTakeProfitPips, InpSlippage);
+   PrintFormat("Data Bar Counts: M5=%d, M30=%d, H1=%d, H4=%d, D1=%d",
+               InpM5Bars, InpM30Bars, InpH1Bars, InpH4Bars, InpD1Bars);
+   PrintFormat("Trading Settings: Lots=%.2f, Magic=%d, Slippage=%d points",
+               InpLots, InpMagicNumber, InpSlippage);
    Print("API URL: ", InpApiUrl);
 
    //--- Setup Trade object
@@ -157,8 +145,7 @@ string SendDataAndGetInstruction()
       PERIOD_H4,
       PERIOD_H1,
       PERIOD_M30,
-      PERIOD_M5,
-      PERIOD_M1
+      PERIOD_M5
    };
 
    // --- Build the JSON Payload ---
@@ -181,12 +168,11 @@ string SendDataAndGetInstruction()
       // --- Determine how many bars to fetch ---
       switch(current_tf)
       {
-         case PERIOD_M1:  bars_to_fetch_for_this_tf = InpM1Bars;  break;
-         case PERIOD_M5:  bars_to_fetch_for_this_tf = InpM5Bars;  break;
-         case PERIOD_M30: bars_to_fetch_for_this_tf = InpM30Bars; break;
-         case PERIOD_H1:  bars_to_fetch_for_this_tf = InpH1Bars;  break;
-         case PERIOD_H4:  bars_to_fetch_for_this_tf = InpH4Bars;  break;
-         case PERIOD_D1:  bars_to_fetch_for_this_tf = InpD1Bars;  break;
+         case PERIOD_M5:  bars_to_fetch_for_this_tf = 300;  break;
+         case PERIOD_M30: bars_to_fetch_for_this_tf = 200; break;
+         case PERIOD_H1:  bars_to_fetch_for_this_tf = 100;  break;
+         case PERIOD_H4:  bars_to_fetch_for_this_tf = 50;  break;
+         case PERIOD_D1:  bars_to_fetch_for_this_tf = 20;  break;
          default: PrintFormat("Warning: No input bar count defined for timeframe %s. Skipping.", tf_string); continue;
       }
 
@@ -198,7 +184,7 @@ string SendDataAndGetInstruction()
 
       if (copied_count > 0)
       {
-         // PrintFormat("Fetched %d bars for %s (requested %d)", copied_count, tf_string, bars_to_fetch_for_this_tf); // Less verbose logging now
+         PrintFormat("Fetched %d bars for %s (requested %d)", copied_count, tf_string, bars_to_fetch_for_this_tf);
          if (!first_tf) { json_payload += ","; }
          first_tf = false;
          json_payload += "\"" + tf_string + "\": [";
@@ -314,12 +300,9 @@ void ProcessInstruction(string instruction)
          Print("Instruction 'B' received. Opening BUY order for ", symbol);
          double sl = 0.0;
          double tp = 0.0;
-         // Calculate SL/TP only if pips > 0
-         if(InpStopLossPips > 0) sl = ask - InpStopLossPips * point;
-         if(InpTakeProfitPips > 0) tp = ask + InpTakeProfitPips * point;
 
-         // Use trade object to open position
-         if(!trade.Buy(InpLots, symbol, ask, sl, tp, "Buy signal from API"))
+         // Use trade object to open position without SL/TP
+         if(!trade.Buy(InpLots, symbol, ask, 0.0, 0.0, "Buy signal from API")) // Pass 0.0 for sl and tp
          {
             Print("Error Opening Buy Order: ", trade.ResultRetcode(), " - ", trade.ResultComment());
          }
@@ -340,12 +323,9 @@ void ProcessInstruction(string instruction)
          Print("Instruction 'S' received. Opening SELL order for ", symbol);
          double sl = 0.0;
          double tp = 0.0;
-         // Calculate SL/TP only if pips > 0
-         if(InpStopLossPips > 0) sl = bid + InpStopLossPips * point;
-         if(InpTakeProfitPips > 0) tp = bid - InpTakeProfitPips * point;
 
-         // Use trade object to open position
-         if(!trade.Sell(InpLots, symbol, bid, sl, tp, "Sell signal from API"))
+         // Use trade object to open position without SL/TP
+         if(!trade.Sell(InpLots, symbol, bid, 0.0, 0.0, "Sell signal from API")) // Pass 0.0 for sl and tp
          {
             Print("Error Opening Sell Order: ", trade.ResultRetcode(), " - ", trade.ResultComment());
          }
@@ -391,8 +371,7 @@ void ProcessInstruction(string instruction)
 string TimeframeToString(ENUM_TIMEFRAMES period)
 {
    switch (period)
-   {
-      case PERIOD_M1:  return "M1";
+   { 
       case PERIOD_M5:  return "M5";
       case PERIOD_M30: return "M30";
       case PERIOD_H1:  return "H1";

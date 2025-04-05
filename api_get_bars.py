@@ -53,12 +53,11 @@ def test_endpoint():
             ##### PROCESS TIME #######
             # Timeframe mapping to normalized values between 0 and 1
             timeframe_map = {
-                'M1': 0.0,    # 1-minute (minimum)
-                'M5': 0.2,    # 5-minute
-                'M30': 0.4,   # 30-minute
-                'H1': 0.6,    # 1-hour
-                'H4': 0.8,    # 4-hour
-                'D1': 1.0     # Daily (maximum)
+                'M5': 0.0,     # 5-minute - Now the minimum value
+                'M30': 0.25,   # 30-minute - Adjusted scaling
+                'H1': 0.5,     # 1-hour - Adjusted scaling
+                'H4': 0.75,    # 4-hour - Adjusted scaling
+                'D1': 1.0      # Daily (maximum)
             }
             
             # Process each timeframe
@@ -116,39 +115,52 @@ def test_endpoint():
                 combined_df = pd.concat(dfs_list, ignore_index=True)
 
                 # --- START NORMALIZATION BLOCK ---
+                # Normalize price and volume columns
                 cols_to_normalize = ['open', 'high', 'low', 'close', 'volume']
-                normalized_dfs = []
-                grouped = combined_df.groupby('timeframe')
-
-                for name, group in grouped:
-                    group_copy = group.copy()
-                    min_vals = group_copy[cols_to_normalize].min()
-                    max_vals = group_copy[cols_to_normalize].max()
-                    range_vals = max_vals - min_vals
-
-                    # Handle columns where min == max (range is 0) to avoid division by zero
-                    # Set normalized value to 0 in this case (or could use 0.5)
-                    for col in cols_to_normalize:
-                        if range_vals[col] == 0:
-                            group_copy[col] = 0.0
-                        else:
-                            group_copy[col] = (group_copy[col] - min_vals[col]) / range_vals[col]
                 
-                    normalized_dfs.append(group_copy)
-            
-                # Recombine the normalized groups
-                if normalized_dfs:
-                     combined_df = pd.concat(normalized_dfs).sort_index() # Sort index to maintain original order if needed
+                # Normalize across the entire dataframe, not by timeframe
+                min_vals = combined_df[cols_to_normalize].min()
+                max_vals = combined_df[cols_to_normalize].max()
+                range_vals = max_vals - min_vals
+
+                # Handle columns where min == max (range is 0) to avoid division by zero
+                for col in cols_to_normalize:
+                    if range_vals[col] == 0:
+                        combined_df[col] = 0.0
+                    else:
+                        combined_df[col] = (combined_df[col] - min_vals[col]) / range_vals[col]
+                
+                # No longer need to normalize by timeframe and recombine
+                normalized_df = combined_df
                 # --- END NORMALIZATION BLOCK ---
                 
+                # Print total number of rows for verification
+                print(f"\nTotal number of rows in combined dataframe: {len(normalized_df)}")
+                print(f"Rows per timeframe:")
+                for tf in timeframe_map.keys():
+                    count = len([x for x in timeframes_data.keys() if x == tf])
+                    if count > 0:
+                        print(f"  {tf}: {len(timeframes_data[tf])} bars")
+                
                 # Cache the processed dataframe
-                cache[symbol] = combined_df
+                cache[symbol] = normalized_df
                 
                 # Display the combined DataFrame with truncation (showing ... in the middle)
                 pd.set_option('display.max_columns', None)
-                pd.set_option('display.max_rows', 10)  # Show limited rows with ... in the middle
+                pd.set_option('display.max_rows', None)  # Show all rows
                 pd.set_option('display.width', 1000)
-                print(combined_df)
+                
+                # Show a more useful summary of the data
+                print("\n--- Data Summary ---")
+                print(f"Shape of dataframe: {normalized_df.shape}")
+                print(f"First 5 rows:")
+                print(normalized_df.head(5))
+                print(f"\nLast 5 rows:")
+                print(normalized_df.tail(5))
+                
+                # Print full normalized dataframe (might be very large output!)
+                print("\n--- Full Normalized DataFrame ---")
+                print(normalized_df)
                        
             print("\n===== DATA PROCESSING COMPLETE =====")
             
