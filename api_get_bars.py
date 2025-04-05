@@ -11,6 +11,62 @@ app = Flask(__name__)
 
 cache = {}
 
+def normalize_data(timeframes_data, timeframe_map):
+    """
+    Process each timeframe's data to create normalized dataframes with time features.
+    
+    Args:
+        timeframes_data (dict): Dictionary of timeframes and their corresponding bars data
+        timeframe_map (dict): Mapping of timeframe strings to normalized values
+        
+    Returns:
+        list: List of processed dataframes for each timeframe
+    """
+    dfs_list = []
+    
+    # Process each timeframe
+    for timeframe, bars in timeframes_data.items():
+        if timeframe in timeframe_map:
+            # Convert the bars to a DataFrame
+            df = pd.DataFrame(bars)
+            
+            # Convert timestamp to datetime
+            df['time'] = pd.to_datetime(df['time'], format='%Y.%m.%d %H:%M:%S')
+            
+            # Add day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
+            # Pandas weekday is 0=Monday, so we need to adjust to make Sunday=0
+            raw_day_of_week = (df['time'].dt.weekday + 1) % 7
+            
+            # Normalize day of week between 0 and 1
+            df['day_of_week'] = raw_day_of_week / 6.0  # Divide by (7-1) to normalize
+            
+            # Extract time components (remove seconds, split hour and minute)
+            df['hour'] = df['time'].dt.hour
+            df['minute'] = df['time'].dt.minute
+            
+            # Normalize hour and minute between 0 and 1
+            df['hour'] = df['hour'] / 23.0  # Divide by (24-1) to normalize
+            df['minute'] = df['minute'] / 59.0  # Divide by (60-1) to normalize
+            
+            # Extract date components (drop year, split month and day)
+            df['day'] = df['time'].dt.day
+            
+            # Normalize day (of month) between 0 and 1
+            # Using 31 as the maximum possible day to normalize
+            df['day'] = df['day'] / 31.0
+            
+            # Drop the original time column and spread column
+            df = df.drop(['time', 'spread'], axis=1)
+            
+            # Add the timeframe column and convert to numerical
+            df['timeframe'] = timeframe
+            df['timeframe'] = df['timeframe'].map(timeframe_map)
+            
+            # Add to list for concatenation
+            dfs_list.append(df)
+    
+    return dfs_list
+
 @app.route('/test', methods=['POST'])
 def test_endpoint():
     print("\n===== NEW REQUEST RECEIVED =====")
@@ -46,8 +102,6 @@ def test_endpoint():
             print(f"\n===== RECEIVED DATA FOR SYMBOL: {symbol} =====")
             
             # List to store DataFrames for each timeframe for concatenation
-            dfs_list = []
-            
             ##### PROCESS TIME #######
             ##### PROCESS TIME #######
             ##### PROCESS TIME #######
@@ -60,46 +114,9 @@ def test_endpoint():
                 'D1': 1.0      # Daily (maximum)
             }
             
-            # Process each timeframe
-            for timeframe, bars in timeframes_data.items():
-                if timeframe in timeframe_map:
-                    # Convert the bars to a DataFrame
-                    df = pd.DataFrame(bars)
-                    
-                    # Convert timestamp to datetime
-                    df['time'] = pd.to_datetime(df['time'], format='%Y.%m.%d %H:%M:%S')
-                    
-                    # Add day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
-                    # Pandas weekday is 0=Monday, so we need to adjust to make Sunday=0
-                    raw_day_of_week = (df['time'].dt.weekday + 1) % 7
-                    
-                    # Normalize day of week between 0 and 1
-                    df['day_of_week'] = raw_day_of_week / 6.0  # Divide by (7-1) to normalize
-                    
-                    # Extract time components (remove seconds, split hour and minute)
-                    df['hour'] = df['time'].dt.hour
-                    df['minute'] = df['time'].dt.minute
-                    
-                    # Normalize hour and minute between 0 and 1
-                    df['hour'] = df['hour'] / 23.0  # Divide by (24-1) to normalize
-                    df['minute'] = df['minute'] / 59.0  # Divide by (60-1) to normalize
-                    
-                    # Extract date components (drop year, split month and day)
-                    df['day'] = df['time'].dt.day
-                    
-                    # Normalize day (of month) between 0 and 1
-                    # Using 31 as the maximum possible day to normalize
-                    df['day'] = df['day'] / 31.0
-                    
-                    # Drop the original time column and spread column
-                    df = df.drop(['time', 'spread'], axis=1)
-                    
-                    # Add the timeframe column and convert to numerical
-                    df['timeframe'] = timeframe
-                    df['timeframe'] = df['timeframe'].map(timeframe_map)
-                    
-                    # Add to list for concatenation
-                    dfs_list.append(df)
+            # Process timeframe data using the new function
+            dfs_list = normalize_data(timeframes_data, timeframe_map)
+            
                 
             ##### PROCESS TIME #######
             ##### PROCESS TIME #######
