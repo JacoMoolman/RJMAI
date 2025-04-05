@@ -9,7 +9,9 @@ import numpy as np
 
 app = Flask(__name__)
 
+# Global configuration variables
 cache = {}
+MAX_SR_LEVELS = 20  # Maximum number of support/resistance levels to track
 
 def normalize_data(timeframes_data, timeframe_map):
     """
@@ -66,6 +68,129 @@ def normalize_data(timeframes_data, timeframe_map):
             dfs_list.append(df)
     
     return dfs_list
+
+def detect_support_resistance(df, window_size=10, threshold=0.02):
+    """
+    Detect support and resistance levels in normalized price data.
+    
+    Args:
+        df: Normalized DataFrame with OHLC data
+        window_size: Number of bars to look at for local extrema
+        threshold: Minimum distance between levels (in normalized units)
+        
+    Returns:
+        DataFrame: DataFrame containing the top support and resistance levels
+    """
+    # Find local maxima for resistance and local minima for support
+    resistance_points = []
+    support_points = []
+    resistance_touches = {}  # Dictionary to count touches of resistance levels
+    support_touches = {}     # Dictionary to count touches of support levels
+    
+    # Group by timeframe to ensure we find extrema within each timeframe
+    for timeframe_value, group in df.groupby('timeframe'):
+        # Sort by the original order within the timeframe
+        group = group.sort_index()
+        highs = group['high'].values
+        lows = group['low'].values
+        
+        for i in range(window_size, len(group) - window_size):
+            # Check if this point is a local maximum or minimum
+            if highs[i] == max(highs[i-window_size:i+window_size+1]):
+                resistance_points.append(highs[i])
+                # Count this as a resistance touch
+                r_level = round(highs[i], 3)  # Round to group similar levels
+                resistance_touches[r_level] = resistance_touches.get(r_level, 0) + 1
+                
+            if lows[i] == min(lows[i-window_size:i+window_size+1]):
+                support_points.append(lows[i])
+                # Count this as a support touch
+                s_level = round(lows[i], 3)  # Round to group similar levels
+                support_touches[s_level] = support_touches.get(s_level, 0) + 1
+    
+    # Cluster similar levels
+    resistance_clusters = cluster_price_levels_with_strength(resistance_points, threshold, resistance_touches)
+    support_clusters = cluster_price_levels_with_strength(support_points, threshold, support_touches)
+    
+    # Find the maximum strength across all clusters for normalization
+    all_strengths = [strength for _, strength in support_clusters + resistance_clusters]
+    max_strength = max(all_strengths) if all_strengths else 1.0
+    
+    # Normalize strengths to be between 0 and 1
+    normalized_support_clusters = [(level, strength/max_strength) for level, strength in support_clusters]
+    normalized_resistance_clusters = [(level, strength/max_strength) for level, strength in resistance_clusters]
+    
+    # Limit to MAX_SR_LEVELS/2 for each type (support and resistance)
+    max_per_type = MAX_SR_LEVELS // 2
+    
+    # Sort by strength (descending) to get strongest levels
+    normalized_support_clusters = sorted(normalized_support_clusters, key=lambda x: x[1], reverse=True)[:max_per_type]
+    normalized_resistance_clusters = sorted(normalized_resistance_clusters, key=lambda x: x[1], reverse=True)[:max_per_type]
+    
+    # Create a dataframe with the levels
+    levels_df = pd.DataFrame({
+        'level_type': [0]*len(normalized_support_clusters) + [1]*len(normalized_resistance_clusters),  # Binary: 0=support, 1=resistance
+        'price_level': [level for level, strength in normalized_support_clusters + normalized_resistance_clusters],
+        'strength': [strength for level, strength in normalized_support_clusters + normalized_resistance_clusters]
+    })
+    
+    return levels_df
+
+def cluster_price_levels_with_strength(price_points, threshold, touch_counts):
+    """
+    Group similar price levels and return the average of each cluster along with its strength.
+    
+    Args:
+        price_points: List of price points to cluster
+        threshold: Minimum distance between clusters
+        touch_counts: Dictionary mapping rounded price levels to their touch counts
+        
+    Returns:
+        list: List of tuples (level, strength) for each clustered price level
+    """
+    if not price_points:
+        return []
+    
+    price_points = sorted(price_points)
+    clusters = []
+    current_cluster = [price_points[0]]
+    
+    for price in price_points[1:]:
+        if abs(price - current_cluster[0]) <= threshold:
+            current_cluster.append(price)
+        else:
+            # Calculate average level and total strength for this cluster
+            avg_level = sum(current_cluster) / len(current_cluster)
+            
+            # Calculate strength based on number of touches
+            # First, find all touch counts that are close to this cluster
+            total_touches = 0
+            for level in current_cluster:
+                rounded = round(level, 3)
+                if rounded in touch_counts:
+                    total_touches += touch_counts[rounded]
+            
+            # Calculate raw strength (will be normalized later in detect_support_resistance)
+            strength = total_touches
+            
+            clusters.append((avg_level, strength))
+            current_cluster = [price]
+    
+    # Add the last cluster
+    if current_cluster:
+        avg_level = sum(current_cluster) / len(current_cluster)
+        
+        # Calculate strength for last cluster
+        total_touches = 0
+        for level in current_cluster:
+            rounded = round(level, 3)
+            if rounded in touch_counts:
+                total_touches += touch_counts[rounded]
+        
+        strength = total_touches
+        clusters.append((avg_level, strength))
+    
+    return clusters
 
 @app.route('/test', methods=['POST'])
 def test_endpoint():
@@ -146,8 +271,14 @@ def test_endpoint():
                 normalized_df = combined_df
                 # --- END NORMALIZATION BLOCK ---
                 
-                # Cache the processed dataframe
-                cache[symbol] = normalized_df
+                # Detect support and resistance levels
+                levels_df = detect_support_resistance(normalized_df)
+                
+                # Cache the processed dataframes
+                cache[symbol] = {
+                    'price_data': normalized_df,
+                    'levels': levels_df
+                }
                 
                 # Display the combined DataFrame with truncation (showing ... in the middle)
                 pd.set_option('display.max_columns', None)
@@ -155,15 +286,19 @@ def test_endpoint():
                 pd.set_option('display.width', 1000)
                 
                 # Print full normalized dataframe
-                print(normalized_df)
+                print(cache[symbol]['price_data'])
                 
                 # Print total number of rows for verification
-                print(f"\nTotal number of rows in combined dataframe: {len(normalized_df)}")
+                print(f"\nTotal number of rows in combined dataframe: {len(cache[symbol]['price_data'])}")
                 print(f"Rows per timeframe:")
                 for tf in timeframe_map.keys():
                     count = len([x for x in timeframes_data.keys() if x == tf])
                     if count > 0:
                         print(f"  {tf}: {len(timeframes_data[tf])} bars")
+                
+                # Print support and resistance levels
+                print("\nSupport and Resistance Levels:")
+                print(cache[symbol]['levels'])
                 
             print("\n===== DATA PROCESSING COMPLETE =====")
             
