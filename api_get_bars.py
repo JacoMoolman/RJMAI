@@ -114,7 +114,7 @@ def test_endpoint():
                 'D1': 1.0      # Daily (maximum)
             }
             
-            # Process timeframe data using the new function
+            # Normalize data
             dfs_list = normalize_data(timeframes_data, timeframe_map)
             
                 
