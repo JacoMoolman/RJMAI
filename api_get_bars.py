@@ -69,14 +69,14 @@ def normalize_data(timeframes_data, timeframe_map):
     
     return dfs_list
 
-def detect_support_resistance(df, window_size=10, threshold=0.02):
+def detect_support_resistance(df, window_size=5, threshold=0.01):
     """
     Detect support and resistance levels in normalized price data.
     
     Args:
         df: Normalized DataFrame with OHLC data
         window_size: Number of bars to look at for local extrema
-        threshold: Minimum distance between levels (in normalized units)
+        threshold: Minimum distance between levels
         
     Returns:
         DataFrame: DataFrame containing the top support and resistance levels
@@ -87,26 +87,25 @@ def detect_support_resistance(df, window_size=10, threshold=0.02):
     resistance_touches = {}  # Dictionary to count touches of resistance levels
     support_touches = {}     # Dictionary to count touches of support levels
     
-    # Group by timeframe to ensure we find extrema within each timeframe
-    for timeframe_value, group in df.groupby('timeframe'):
-        # Sort by the original order within the timeframe
-        group = group.sort_index()
-        highs = group['high'].values
-        lows = group['low'].values
-        
-        for i in range(window_size, len(group) - window_size):
-            # Check if this point is a local maximum or minimum
-            if highs[i] == max(highs[i-window_size:i+window_size+1]):
-                resistance_points.append(highs[i])
-                # Count this as a resistance touch
-                r_level = round(highs[i], 3)  # Round to group similar levels
-                resistance_touches[r_level] = resistance_touches.get(r_level, 0) + 1
-                
-            if lows[i] == min(lows[i-window_size:i+window_size+1]):
-                support_points.append(lows[i])
-                # Count this as a support touch
-                s_level = round(lows[i], 3)  # Round to group similar levels
-                support_touches[s_level] = support_touches.get(s_level, 0) + 1
+    # Get the sorted high and low values from the full normalized dataframe
+    highs = df['high'].values
+    lows = df['low'].values
+    
+    # Find local maxima and minima across the entire dataset
+    for i in range(window_size, len(df) - window_size):
+        # Check if this point is a local maximum
+        if highs[i] == max(highs[i-window_size:i+window_size+1]):
+            resistance_points.append(highs[i])
+            # Count this as a resistance touch
+            r_level = round(highs[i], 3)  # Round to group similar levels
+            resistance_touches[r_level] = resistance_touches.get(r_level, 0) + 1
+            
+        # Check if this point is a local minimum
+        if lows[i] == min(lows[i-window_size:i+window_size+1]):
+            support_points.append(lows[i])
+            # Count this as a support touch
+            s_level = round(lows[i], 3)  # Round to group similar levels
+            support_touches[s_level] = support_touches.get(s_level, 0) + 1
     
     # Cluster similar levels
     resistance_clusters = cluster_price_levels_with_strength(resistance_points, threshold, resistance_touches)
