@@ -85,19 +85,14 @@ def test_endpoint():
                     df['minute'] = df['minute'] / 59.0  # Divide by (60-1) to normalize
                     
                     # Extract date components (drop year, split month and day)
-                    df['month'] = df['time'].dt.month
                     df['day'] = df['time'].dt.day
                     
                     # Normalize day (of month) between 0 and 1
                     # Using 31 as the maximum possible day to normalize
                     df['day'] = df['day'] / 31.0
                     
-                    # Create cyclical features for month
-                    df['month_sin'] = np.sin(2 * np.pi * df['month']/12)
-                    df['month_cos'] = np.cos(2 * np.pi * df['month']/12)
-                    
-                    # Drop the original time and month columns
-                    df = df.drop(['time', 'month'], axis=1)
+                    # Drop the original time column and spread column
+                    df = df.drop(['time', 'spread'], axis=1)
                     
                     # Add the timeframe column and convert to numerical
                     df['timeframe'] = timeframe
@@ -134,14 +129,6 @@ def test_endpoint():
                 normalized_df = combined_df
                 # --- END NORMALIZATION BLOCK ---
                 
-                # Print total number of rows for verification
-                print(f"\nTotal number of rows in combined dataframe: {len(normalized_df)}")
-                print(f"Rows per timeframe:")
-                for tf in timeframe_map.keys():
-                    count = len([x for x in timeframes_data.keys() if x == tf])
-                    if count > 0:
-                        print(f"  {tf}: {len(timeframes_data[tf])} bars")
-                
                 # Cache the processed dataframe
                 cache[symbol] = normalized_df
                 
@@ -150,18 +137,17 @@ def test_endpoint():
                 pd.set_option('display.max_rows', None)  # Show all rows
                 pd.set_option('display.width', 1000)
                 
-                # Show a more useful summary of the data
-                print("\n--- Data Summary ---")
-                print(f"Shape of dataframe: {normalized_df.shape}")
-                print(f"First 5 rows:")
-                print(normalized_df.head(5))
-                print(f"\nLast 5 rows:")
-                print(normalized_df.tail(5))
-                
-                # Print full normalized dataframe (might be very large output!)
-                print("\n--- Full Normalized DataFrame ---")
+                # Print full normalized dataframe
                 print(normalized_df)
-                       
+                
+                # Print total number of rows for verification
+                print(f"\nTotal number of rows in combined dataframe: {len(normalized_df)}")
+                print(f"Rows per timeframe:")
+                for tf in timeframe_map.keys():
+                    count = len([x for x in timeframes_data.keys() if x == tf])
+                    if count > 0:
+                        print(f"  {tf}: {len(timeframes_data[tf])} bars")
+                
             print("\n===== DATA PROCESSING COMPLETE =====")
             
             # Generate random trade instruction (B=Buy, S=Sell, H=Hold, C=Close)
