@@ -53,10 +53,11 @@ def test_endpoint():
             
             # Timeframe mapping to normalized values between 0 and 1
             timeframe_map = {
-                'M5': 0.0,     # 5-minute - Now the minimum value
-                'M30': 0.25,   # 30-minute - Adjusted scaling
-                'H1': 0.5,     # 1-hour - Adjusted scaling
-                'H4': 0.75,    # 4-hour - Adjusted scaling
+                'M1': 0.0,     # 1-minute - Now the minimum value
+                'M5': 0.2,     # 5-minute - Adjusted scaling
+                'M30': 0.4,    # 30-minute - Adjusted scaling
+                'H1': 0.6,     # 1-hour - Adjusted scaling
+                'H4': 0.8,     # 4-hour - Adjusted scaling
                 'D1': 1.0      # Daily (maximum)
             }
             

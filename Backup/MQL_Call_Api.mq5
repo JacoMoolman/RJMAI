@@ -3,6 +3,7 @@
 
 //--- Input parameters for bar counts per timeframe
 input group "Data Fetching Settings"
+input int InpM1Bars  = 500; // Number of M1 bars to fetch
 input int InpM5Bars  = 300; // Number of M5 bars to fetch
 input int InpM30Bars = 200; // Number of M30 bars to fetch
 input int InpH1Bars  = 100;  // Number of H1 bars to fetch
@@ -38,8 +39,8 @@ static datetime lastBarTime = 0; // Tracks the last bar time for new bar detecti
 int OnInit()
 {
    Print("API Trading EA initializing...");
-   PrintFormat("Data Bar Counts: M5=%d, M30=%d, H1=%d, H4=%d, D1=%d",
-               InpM5Bars, InpM30Bars, InpH1Bars, InpH4Bars, InpD1Bars);
+   PrintFormat("Data Bar Counts: M1=%d, M5=%d, M30=%d, H1=%d, H4=%d, D1=%d",
+               InpM1Bars, InpM5Bars, InpM30Bars, InpH1Bars, InpH4Bars, InpD1Bars);
    PrintFormat("Trading Settings: Lots=%.2f, Magic=%d, Slippage=%d points",
                InpLots, InpMagicNumber, InpSlippage);
    Print("API URL: ", InpApiUrl);
@@ -145,7 +146,8 @@ string SendDataAndGetInstruction()
       PERIOD_H4,
       PERIOD_H1,
       PERIOD_M30,
-      PERIOD_M5
+      PERIOD_M5,
+      PERIOD_M1
    };
 
    // --- Build the JSON Payload ---
@@ -168,6 +170,7 @@ string SendDataAndGetInstruction()
       // --- Determine how many bars to fetch ---
       switch(current_tf)
       {
+         case PERIOD_M1:  bars_to_fetch_for_this_tf = 500;  break;
          case PERIOD_M5:  bars_to_fetch_for_this_tf = 300;  break;
          case PERIOD_M30: bars_to_fetch_for_this_tf = 200; break;
          case PERIOD_H1:  bars_to_fetch_for_this_tf = 100;  break;
@@ -372,6 +375,7 @@ string TimeframeToString(ENUM_TIMEFRAMES period)
 {
    switch (period)
    { 
+      case PERIOD_M1:  return "M1";
       case PERIOD_M5:  return "M5";
       case PERIOD_M30: return "M30";
       case PERIOD_H1:  return "H1";
@@ -381,4 +385,4 @@ string TimeframeToString(ENUM_TIMEFRAMES period)
       default:         return EnumToString(period); // Fallback for unhandled enums
    }
 }
-//+------------------------------------------------------------------+
+//+-------------------------------------------------------------------++
