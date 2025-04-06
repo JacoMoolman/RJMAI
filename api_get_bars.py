@@ -61,7 +61,7 @@ def test_endpoint():
                 'D1': 1.0      # Daily (maximum)
             }
             
-            # Normalize data
+            # Get normalized dataframes for each timeframe
             dfs_list = normalize_data(timeframes_data, timeframe_map)
                             
             ##### PROCESS TIME #######
@@ -69,27 +69,37 @@ def test_endpoint():
             
             # Concatenate all dataframes into a single dataframe
             if dfs_list:
-                combined_df = pd.concat(dfs_list, ignore_index=True)
-
-                # --- START NORMALIZATION BLOCK ---
-                # Normalize price and volume columns
-                cols_to_normalize = ['open', 'high', 'low', 'close', 'volume']
+                # --- MODIFIED NORMALIZATION BLOCK ---
+                # First normalize each dataframe individually by timeframe
+                normalized_dfs = []
                 
-                # Normalize across the entire dataframe, not by timeframe
-                min_vals = combined_df[cols_to_normalize].min()
-                max_vals = combined_df[cols_to_normalize].max()
-                range_vals = max_vals - min_vals
-
-                # Handle columns where min == max (range is 0) to avoid division by zero
-                for col in cols_to_normalize:
-                    if range_vals[col] == 0:
-                        combined_df[col] = 0.0
-                    else:
-                        combined_df[col] = (combined_df[col] - min_vals[col]) / range_vals[col]
+                for df in dfs_list:
+                    # Get the current timeframe for this dataframe
+                    tf = df['timeframe'].iloc[0]  # All rows have the same timeframe value
+                    
+                    # Normalize price and volume columns for this timeframe
+                    cols_to_normalize = ['open', 'high', 'low', 'close', 'volume']
+                    
+                    # Normalize within this timeframe's dataframe
+                    tf_min_vals = df[cols_to_normalize].min()
+                    tf_max_vals = df[cols_to_normalize].max()
+                    tf_range_vals = tf_max_vals - tf_min_vals
+                    
+                    # Create a copy to avoid modifying the original
+                    normalized_df = df.copy()
+                    
+                    # Handle columns where min == max (range is 0) to avoid division by zero
+                    for col in cols_to_normalize:
+                        if tf_range_vals[col] == 0:
+                            normalized_df[col] = 0.0
+                        else:
+                            normalized_df[col] = (df[col] - tf_min_vals[col]) / tf_range_vals[col]
+                    
+                    normalized_dfs.append(normalized_df)
                 
-                # No longer need to normalize by timeframe and recombine
-                normalized_df = combined_df
-                # --- END NORMALIZATION BLOCK ---
+                # Now concatenate the normalized dataframes
+                normalized_df = pd.concat(normalized_dfs, ignore_index=True)
+                # --- END MODIFIED NORMALIZATION BLOCK ---
                 
                 # Detect support and resistance levels
                 levels_df = detect_support_resistance(normalized_df)
