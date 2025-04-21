@@ -99,6 +99,26 @@ def test_endpoint():
                 
                 # Now concatenate the normalized dataframes
                 normalized_df = pd.concat(normalized_dfs, ignore_index=True)
+
+                # --- ADD DIFFERENCE COLUMNS ---
+                # Calculate differences between OHLC values
+                normalized_df['diff_open_high'] = normalized_df['open'] - normalized_df['high']
+                normalized_df['diff_open_low'] = normalized_df['open'] - normalized_df['low']
+                normalized_df['diff_open_close'] = normalized_df['open'] - normalized_df['close']
+
+                normalized_df['diff_high_open'] = normalized_df['high'] - normalized_df['open']
+                normalized_df['diff_high_low'] = normalized_df['high'] - normalized_df['low']
+                normalized_df['diff_high_close'] = normalized_df['high'] - normalized_df['close']
+
+                normalized_df['diff_low_open'] = normalized_df['low'] - normalized_df['open']
+                normalized_df['diff_low_high'] = normalized_df['low'] - normalized_df['high']
+                normalized_df['diff_low_close'] = normalized_df['low'] - normalized_df['close']
+
+                normalized_df['diff_close_open'] = normalized_df['close'] - normalized_df['open']
+                normalized_df['diff_close_high'] = normalized_df['close'] - normalized_df['high']
+                normalized_df['diff_close_low'] = normalized_df['close'] - normalized_df['low']
+                # --- END ADD DIFFERENCE COLUMNS ---
+
                 # --- END MODIFIED NORMALIZATION BLOCK ---
                 
                 # Detect support and resistance levels
@@ -112,7 +132,7 @@ def test_endpoint():
                 
                 # Display the combined DataFrame with truncation (showing ... in the middle)
                 pd.set_option('display.max_columns', None)
-                pd.set_option('display.max_rows', None)  # Show all rows
+                pd.set_option('display.max_rows', 10)  # Show all rows
                 pd.set_option('display.width', 1000)
                 
                 # Print full normalized dataframe
