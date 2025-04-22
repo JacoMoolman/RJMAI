@@ -17,6 +17,22 @@ input ulong  InpMagicNumber   = 12345;    // Magic Number for trades
 input uint   InpSlippage      = 10;       // Slippage in points
 input string InpApiUrl        = "http://localhost:5000/test"; // API Endpoint URL
 
+//--- Technical Indicator Parameters ---
+input group "Technical Indicators"
+input int    InpMA20Period   = 20;     // MA 20 Period
+input int    InpMA50Period   = 50;     // MA 50 Period
+input int    InpMA100Period  = 100;    // MA 100 Period
+input int    InpRSIPeriod    = 14;     // RSI Period
+input int    InpBBPeriod     = 20;     // Bollinger Bands Period
+input int    InpBBDeviation  = 2;      // Bollinger Bands Deviation
+input int    InpMACDFast     = 12;     // MACD Fast Period
+input int    InpMACDSlow     = 26;     // MACD Slow Period
+input int    InpMACDSignal   = 9;      // MACD Signal Period
+input int    InpStochKPeriod = 5;      // Stochastic K Period
+input int    InpStochDPeriod = 3;      // Stochastic D Period
+input int    InpStochSlowing = 3;      // Stochastic Slowing
+input int    InpADXPeriod    = 14;     // ADX Period
+
 //+------------------------------------------------------------------+
 //| DLL Imports                                                      |
 //+------------------------------------------------------------------+
@@ -170,12 +186,12 @@ string SendDataAndGetInstruction()
       // --- Determine how many bars to fetch ---
       switch(current_tf)
       {
-         case PERIOD_M1:  bars_to_fetch_for_this_tf = 500;  break;
-         case PERIOD_M5:  bars_to_fetch_for_this_tf = 300;  break;
-         case PERIOD_M30: bars_to_fetch_for_this_tf = 200; break;
-         case PERIOD_H1:  bars_to_fetch_for_this_tf = 100;  break;
-         case PERIOD_H4:  bars_to_fetch_for_this_tf = 50;  break;
-         case PERIOD_D1:  bars_to_fetch_for_this_tf = 20;  break;
+         case PERIOD_M1:  bars_to_fetch_for_this_tf = InpM1Bars;  break;
+         case PERIOD_M5:  bars_to_fetch_for_this_tf = InpM5Bars;  break;
+         case PERIOD_M30: bars_to_fetch_for_this_tf = InpM30Bars; break;
+         case PERIOD_H1:  bars_to_fetch_for_this_tf = InpH1Bars;  break;
+         case PERIOD_H4:  bars_to_fetch_for_this_tf = InpH4Bars;  break;
+         case PERIOD_D1:  bars_to_fetch_for_this_tf = InpD1Bars;  break;
          default: PrintFormat("Warning: No input bar count defined for timeframe %s. Skipping.", tf_string); continue;
       }
 
@@ -191,8 +207,99 @@ string SendDataAndGetInstruction()
          if (!first_tf) { json_payload += ","; }
          first_tf = false;
          json_payload += "\"" + tf_string + "\": [";
+         
+         // Calculate indicators for this timeframe using standard MT5 indicator functions
+         double ma20[], ma50[], ma100[];
+         double upper_band[], middle_band[], lower_band[];
+         double rsi[];
+         double stoch_k[], stoch_d[];
+         double macd_main[], macd_signal[];
+         double adx[], plus_di[], minus_di[];
+         double ichimoku_tenkan[], ichimoku_kijun[], ichimoku_senkou_a[], ichimoku_senkou_b[];
+         
+         // Initialize arrays
+         ArraySetAsSeries(ma20, true);
+         ArraySetAsSeries(ma50, true);
+         ArraySetAsSeries(ma100, true);
+         ArraySetAsSeries(upper_band, true);
+         ArraySetAsSeries(middle_band, true);
+         ArraySetAsSeries(lower_band, true);
+         ArraySetAsSeries(rsi, true);
+         ArraySetAsSeries(stoch_k, true);
+         ArraySetAsSeries(stoch_d, true);
+         ArraySetAsSeries(macd_main, true);
+         ArraySetAsSeries(macd_signal, true);
+         ArraySetAsSeries(adx, true);
+         ArraySetAsSeries(plus_di, true);
+         ArraySetAsSeries(minus_di, true);
+         ArraySetAsSeries(ichimoku_tenkan, true);
+         ArraySetAsSeries(ichimoku_kijun, true);
+         ArraySetAsSeries(ichimoku_senkou_a, true);
+         ArraySetAsSeries(ichimoku_senkou_b, true);
+         
+         // Calculate the indicators
+         int ma20_handle = iMA(symbol_name, current_tf, InpMA20Period, 0, MODE_SMA, PRICE_CLOSE);
+         int ma50_handle = iMA(symbol_name, current_tf, InpMA50Period, 0, MODE_SMA, PRICE_CLOSE);
+         int ma100_handle = iMA(symbol_name, current_tf, InpMA100Period, 0, MODE_SMA, PRICE_CLOSE);
+         int bb_handle = iBands(symbol_name, current_tf, InpBBPeriod, 0, InpBBDeviation, PRICE_CLOSE);
+         int rsi_handle = iRSI(symbol_name, current_tf, InpRSIPeriod, PRICE_CLOSE);
+         int stoch_handle = iStochastic(symbol_name, current_tf, InpStochKPeriod, InpStochDPeriod, InpStochSlowing, MODE_SMA, STO_LOWHIGH);
+         int macd_handle = iMACD(symbol_name, current_tf, InpMACDFast, InpMACDSlow, InpMACDSignal, PRICE_CLOSE);
+         int adx_handle = iADX(symbol_name, current_tf, InpADXPeriod);
+         int ichimoku_handle = iIchimoku(symbol_name, current_tf, 9, 26, 52); // Standard Ichimoku periods
+         
+         // Check for valid handles
+         bool valid_handles = ma20_handle != INVALID_HANDLE && 
+                             ma50_handle != INVALID_HANDLE && 
+                             ma100_handle != INVALID_HANDLE && 
+                             bb_handle != INVALID_HANDLE && 
+                             rsi_handle != INVALID_HANDLE && 
+                             stoch_handle != INVALID_HANDLE && 
+                             macd_handle != INVALID_HANDLE && 
+                             adx_handle != INVALID_HANDLE && 
+                             ichimoku_handle != INVALID_HANDLE;
+                             
+         if (valid_handles) {
+            // Copy indicator values
+            CopyBuffer(ma20_handle, 0, 0, copied_count, ma20);
+            CopyBuffer(ma50_handle, 0, 0, copied_count, ma50);
+            CopyBuffer(ma100_handle, 0, 0, copied_count, ma100);
+            CopyBuffer(bb_handle, 0, 0, copied_count, upper_band);
+            CopyBuffer(bb_handle, 1, 0, copied_count, middle_band);
+            CopyBuffer(bb_handle, 2, 0, copied_count, lower_band);
+            CopyBuffer(rsi_handle, 0, 0, copied_count, rsi);
+            CopyBuffer(stoch_handle, 0, 0, copied_count, stoch_k);
+            CopyBuffer(stoch_handle, 1, 0, copied_count, stoch_d);
+            CopyBuffer(macd_handle, 0, 0, copied_count, macd_main);
+            CopyBuffer(macd_handle, 1, 0, copied_count, macd_signal);
+            CopyBuffer(adx_handle, 0, 0, copied_count, adx);
+            CopyBuffer(adx_handle, 1, 0, copied_count, plus_di);
+            CopyBuffer(adx_handle, 2, 0, copied_count, minus_di);
+            CopyBuffer(ichimoku_handle, 0, 0, copied_count, ichimoku_tenkan);
+            CopyBuffer(ichimoku_handle, 1, 0, copied_count, ichimoku_kijun);
+            CopyBuffer(ichimoku_handle, 2, 0, copied_count, ichimoku_senkou_a);
+            CopyBuffer(ichimoku_handle, 3, 0, copied_count, ichimoku_senkou_b);
+         }
+         
+         // Release handles to avoid resource leaks
+         if (ma20_handle != INVALID_HANDLE) IndicatorRelease(ma20_handle);
+         if (ma50_handle != INVALID_HANDLE) IndicatorRelease(ma50_handle);
+         if (ma100_handle != INVALID_HANDLE) IndicatorRelease(ma100_handle);
+         if (bb_handle != INVALID_HANDLE) IndicatorRelease(bb_handle);
+         if (rsi_handle != INVALID_HANDLE) IndicatorRelease(rsi_handle);
+         if (stoch_handle != INVALID_HANDLE) IndicatorRelease(stoch_handle);
+         if (macd_handle != INVALID_HANDLE) IndicatorRelease(macd_handle);
+         if (adx_handle != INVALID_HANDLE) IndicatorRelease(adx_handle);
+         if (ichimoku_handle != INVALID_HANDLE) IndicatorRelease(ichimoku_handle);
+         
          for (int j = 0; j < copied_count; j++)
          {
+            // Check if indicator data is valid for this bar
+            bool valid_data = valid_handles && 
+                            j < ArraySize(ma20) && j < ArraySize(ma50) && j < ArraySize(ma100) &&
+                            j < ArraySize(rsi) && j < ArraySize(stoch_k) && j < ArraySize(stoch_d) &&
+                            j < ArraySize(upper_band) && j < ArraySize(middle_band) && j < ArraySize(lower_band);
+            
             json_payload += "{";
             json_payload += "\"time\": "   + (string)rates_array[j].time + ",";
             json_payload += "\"open\": "   + DoubleToString(rates_array[j].open, _Digits) + ",";
@@ -201,12 +308,52 @@ string SendDataAndGetInstruction()
             json_payload += "\"close\": "  + DoubleToString(rates_array[j].close, _Digits) + ",";
             json_payload += "\"volume\": " + (string)rates_array[j].tick_volume + ",";
             json_payload += "\"spread\": " + (string)rates_array[j].spread;
+            
+            // Add technical indicators if data is valid
+            if(valid_data) {
+               // Moving Averages
+               json_payload += ",\"ma20\": "  + DoubleToString(ma20[j], _Digits);
+               json_payload += ",\"ma50\": "  + DoubleToString(ma50[j], _Digits);
+               json_payload += ",\"ma100\": " + DoubleToString(ma100[j], _Digits);
+               
+               // Bollinger Bands
+               json_payload += ",\"bb_upper\": " + DoubleToString(upper_band[j], _Digits);
+               json_payload += ",\"bb_middle\": " + DoubleToString(middle_band[j], _Digits);
+               json_payload += ",\"bb_lower\": " + DoubleToString(lower_band[j], _Digits);
+               
+               // RSI
+               json_payload += ",\"rsi\": " + DoubleToString(rsi[j], 2);
+               
+               // Stochastic
+               json_payload += ",\"stoch_k\": " + DoubleToString(stoch_k[j], 2);
+               json_payload += ",\"stoch_d\": " + DoubleToString(stoch_d[j], 2);
+               
+               // MACD
+               json_payload += ",\"macd_main\": " + DoubleToString(macd_main[j], _Digits);
+               json_payload += ",\"macd_signal\": " + DoubleToString(macd_signal[j], _Digits);
+               json_payload += ",\"macd_hist\": " + DoubleToString(macd_main[j] - macd_signal[j], _Digits);
+               
+               // ADX
+               json_payload += ",\"adx\": " + DoubleToString(adx[j], 2);
+               json_payload += ",\"plus_di\": " + DoubleToString(plus_di[j], 2);
+               json_payload += ",\"minus_di\": " + DoubleToString(minus_di[j], 2);
+               
+               // Ichimoku
+               json_payload += ",\"ichimoku_tenkan\": " + DoubleToString(ichimoku_tenkan[j], _Digits);
+               json_payload += ",\"ichimoku_kijun\": " + DoubleToString(ichimoku_kijun[j], _Digits);
+               json_payload += ",\"ichimoku_senkou_a\": " + DoubleToString(ichimoku_senkou_a[j], _Digits);
+               json_payload += ",\"ichimoku_senkou_b\": " + DoubleToString(ichimoku_senkou_b[j], _Digits);
+            }
+            
             json_payload += "}";
             if (j < copied_count - 1) { json_payload += ","; }
          }
          json_payload += "]";
       }
-      else { PrintFormat("Warning: Could not fetch bars for %s. Copied: %d (req: %d), Err: %d. Skipping.", tf_string, copied_count, bars_to_fetch_for_this_tf, GetLastError()); }
+      else
+      {
+         PrintFormat("Warning: Could not fetch bars for %s. Copied: %d (req: %d), Err: %d. Skipping.", tf_string, copied_count, bars_to_fetch_for_this_tf, GetLastError());
+      }
 
       Sleep(20); // Reduce sleep slightly, still good practice
    }

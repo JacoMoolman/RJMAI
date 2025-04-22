@@ -47,6 +47,21 @@ def normalize_data(timeframes_data, timeframe_map):
             # Using 31 as the maximum possible day to normalize
             df['day'] = df['day'] / 31.0
             
+            # Check for technical indicators and ensure they exist
+            # List of all expected technical indicators
+            indicator_columns = [
+                'ma20', 'ma50', 'ma100',                                # Moving Averages
+                'bb_upper', 'bb_middle', 'bb_lower',                    # Bollinger Bands
+                'rsi',                                                  # RSI
+                'stoch_k', 'stoch_d',                                   # Stochastic
+                'macd_main', 'macd_signal', 'macd_hist',                # MACD
+                'adx', 'plus_di', 'minus_di',                           # ADX
+                'ichimoku_tenkan', 'ichimoku_kijun', 'ichimoku_senkou_a', 'ichimoku_senkou_b'  # Ichimoku
+            ]
+            
+            # Identify which indicators are available in this data
+            available_indicators = [col for col in indicator_columns if col in df.columns]
+            
             # Drop the original time column and spread column
             df = df.drop(['time', 'spread'], axis=1)
             

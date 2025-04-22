@@ -6,7 +6,40 @@ import datetime
 import random
 import math
 import numpy as np
+import os
+from datetime import datetime
 from jmaitoolbox import normalize_data, detect_support_resistance, cluster_price_levels_with_strength
+
+# Configuration
+EXPORT_TO_CSV = True  # Set to False to disable CSV exports
+CSV_OUTPUT_DIR = "data_exports"  # Directory to store CSV files
+
+# Create output directory if it doesn't exist
+if EXPORT_TO_CSV and not os.path.exists(CSV_OUTPUT_DIR):
+    os.makedirs(CSV_OUTPUT_DIR)
+
+# Function to export DataFrame to CSV
+def export_df_to_csv(df, stage_name, symbol="UNKNOWN"):
+    """
+    Export a DataFrame to CSV file
+    
+    Args:
+        df: DataFrame to export
+        stage_name: Name of the processing stage (for filename)
+        symbol: Trading symbol
+    """
+    if not EXPORT_TO_CSV:
+        return
+        
+    # Use a single file per stage that gets overwritten
+    filename = f"{CSV_OUTPUT_DIR}/{symbol}_{stage_name}.csv"
+    
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    
+    # Export to CSV, overwriting previous file
+    df.to_csv(filename, index=True)
+    print(f"Exported {stage_name} DataFrame to {filename}")
 
 app = Flask(__name__)
 
@@ -63,6 +96,11 @@ def test_endpoint():
             
             # Get normalized dataframes for each timeframe
             dfs_list = normalize_data(timeframes_data, timeframe_map)
+            
+            # Export raw dataframes before additional normalization
+            for i, df in enumerate(dfs_list):
+                tf = df['timeframe'].iloc[0]
+                export_df_to_csv(df, f"stage1_raw_timeframe_{tf}", symbol)
                             
             ##### PROCESS TIME #######
 
@@ -80,6 +118,29 @@ def test_endpoint():
                     # Normalize price and volume columns for this timeframe
                     cols_to_normalize = ['open', 'high', 'low', 'close', 'volume']
                     
+                    # Add technical indicators to normalization if they exist
+                    technical_indicators = [
+                        'ma20', 'ma50', 'ma100',                                # Moving Averages
+                        'bb_upper', 'bb_middle', 'bb_lower',                    # Bollinger Bands
+                        'macd_main', 'macd_signal', 'macd_hist',                # MACD
+                        'ichimoku_tenkan', 'ichimoku_kijun', 'ichimoku_senkou_a', 'ichimoku_senkou_b'  # Ichimoku
+                    ]
+                    
+                    # Add technical indicators that exist to the list for normalization
+                    for indicator in technical_indicators:
+                        if indicator in df.columns:
+                            cols_to_normalize.append(indicator)
+                    
+                    # Oscillators (already between 0-100 or similar ranges, so normalize separately)
+                    oscillator_indicators = {
+                        'rsi': (0, 100),
+                        'stoch_k': (0, 100),
+                        'stoch_d': (0, 100),
+                        'adx': (0, 100), 
+                        'plus_di': (0, 100),
+                        'minus_di': (0, 100)
+                    }
+                    
                     # Normalize within this timeframe's dataframe
                     tf_min_vals = df[cols_to_normalize].min()
                     tf_max_vals = df[cols_to_normalize].max()
@@ -95,10 +156,22 @@ def test_endpoint():
                         else:
                             normalized_df[col] = (df[col] - tf_min_vals[col]) / tf_range_vals[col]
                     
+                    # Normalize oscillators (which typically have fixed ranges)
+                    for indicator, (min_val, max_val) in oscillator_indicators.items():
+                        if indicator in df.columns:
+                            # Normalize between 0 and 1 using the fixed range
+                            normalized_df[indicator] = (df[indicator] - min_val) / (max_val - min_val)
+                    
+                    # Export individual normalized timeframe data
+                    export_df_to_csv(normalized_df, f"stage2_normalized_timeframe_{tf}", symbol)
+                    
                     normalized_dfs.append(normalized_df)
                 
                 # Now concatenate the normalized dataframes
                 normalized_df = pd.concat(normalized_dfs, ignore_index=True)
+                
+                # Export concatenated data before adding difference columns
+                export_df_to_csv(normalized_df, "stage3_concatenated", symbol)
 
                 # --- ADD DIFFERENCE COLUMNS ---
                 # Calculate differences between OHLC values
@@ -117,9 +190,81 @@ def test_endpoint():
                 normalized_df['diff_close_open'] = normalized_df['close'] - normalized_df['open']
                 normalized_df['diff_close_high'] = normalized_df['close'] - normalized_df['high']
                 normalized_df['diff_close_low'] = normalized_df['close'] - normalized_df['low']
+                
+                # Add indicator crossovers and differences (where applicable)
+                if all(col in normalized_df.columns for col in ['ma20', 'ma50']):
+                    normalized_df['ma20_50_diff'] = normalized_df['ma20'] - normalized_df['ma50']
+                    
+                if all(col in normalized_df.columns for col in ['ma50', 'ma100']):
+                    normalized_df['ma50_100_diff'] = normalized_df['ma50'] - normalized_df['ma100']
+                    
+                if all(col in normalized_df.columns for col in ['ma20', 'ma100']):
+                    normalized_df['ma20_100_diff'] = normalized_df['ma20'] - normalized_df['ma100']
+                
+                if all(col in normalized_df.columns for col in ['macd_main', 'macd_signal']):
+                    normalized_df['macd_crossover'] = normalized_df['macd_main'] - normalized_df['macd_signal']
+                
+                if all(col in normalized_df.columns for col in ['stoch_k', 'stoch_d']):
+                    normalized_df['stoch_crossover'] = normalized_df['stoch_k'] - normalized_df['stoch_d']
+                
+                if all(col in normalized_df.columns for col in ['plus_di', 'minus_di']):
+                    normalized_df['di_crossover'] = normalized_df['plus_di'] - normalized_df['minus_di']
+                
+                # Bollinger Band position
+                if all(col in normalized_df.columns for col in ['close', 'bb_upper', 'bb_lower']):
+                    normalized_df['bb_position'] = (normalized_df['close'] - normalized_df['bb_lower']) / (normalized_df['bb_upper'] - normalized_df['bb_lower'])
+                    # Handle division by zero
+                    normalized_df['bb_position'] = normalized_df['bb_position'].fillna(0.5)
+                    # Normalize to 0-1 range
+                    normalized_df['bb_position'] = normalized_df['bb_position'].clip(0, 1)
+                
+                # Ichimoku cloud status
+                if all(col in normalized_df.columns for col in ['close', 'ichimoku_senkou_a', 'ichimoku_senkou_b']):
+                    # Above cloud = 1, Below cloud = 0, In cloud = 0.5
+                    normalized_df['cloud_position'] = ((normalized_df['close'] > normalized_df['ichimoku_senkou_a']) & 
+                                                    (normalized_df['close'] > normalized_df['ichimoku_senkou_b'])).astype(float)
+                    
+                    in_cloud = ((normalized_df['close'] >= normalized_df['ichimoku_senkou_a']) & 
+                               (normalized_df['close'] <= normalized_df['ichimoku_senkou_b'])) | \
+                              ((normalized_df['close'] <= normalized_df['ichimoku_senkou_a']) & 
+                               (normalized_df['close'] >= normalized_df['ichimoku_senkou_b']))
+                    
+                    normalized_df.loc[in_cloud, 'cloud_position'] = 0.5
+                
+                # Normalize crossover signals to 0-1 range
+                if 'macd_crossover' in normalized_df.columns:
+                    # Scale and shift MACD crossover to 0-1 range
+                    min_macd = normalized_df['macd_crossover'].min()
+                    max_macd = normalized_df['macd_crossover'].max()
+                    if max_macd != min_macd:  # Prevent division by zero
+                        normalized_df['macd_crossover'] = (normalized_df['macd_crossover'] - min_macd) / (max_macd - min_macd)
+                
+                if 'stoch_crossover' in normalized_df.columns:
+                    # Scale and shift Stochastic crossover to 0-1 range
+                    min_stoch = normalized_df['stoch_crossover'].min()
+                    max_stoch = normalized_df['stoch_crossover'].max()
+                    if max_stoch != min_stoch:  # Prevent division by zero
+                        normalized_df['stoch_crossover'] = (normalized_df['stoch_crossover'] - min_stoch) / (max_stoch - min_stoch)
+                
+                if 'di_crossover' in normalized_df.columns:
+                    # Scale and shift DI crossover to 0-1 range
+                    min_di = normalized_df['di_crossover'].min()
+                    max_di = normalized_df['di_crossover'].max()
+                    if max_di != min_di:  # Prevent division by zero
+                        normalized_df['di_crossover'] = (normalized_df['di_crossover'] - min_di) / (max_di - min_di)
+                
+                # Normalize MA difference values to 0-1 range
+                for ma_diff in ['ma20_50_diff', 'ma50_100_diff', 'ma20_100_diff']:
+                    if ma_diff in normalized_df.columns:
+                        min_val = normalized_df[ma_diff].min()
+                        max_val = normalized_df[ma_diff].max()
+                        if max_val != min_val:  # Prevent division by zero
+                            normalized_df[ma_diff] = (normalized_df[ma_diff] - min_val) / (max_val - min_val)
+                
                 # --- END ADD DIFFERENCE COLUMNS ---
-
-                # --- END MODIFIED NORMALIZATION BLOCK ---
+                
+                # Export the data after adding all derived features
+                export_df_to_csv(normalized_df, "stage4_with_derived_features", symbol)
                 
                 # Detect support and resistance levels
                 levels_df = detect_support_resistance(normalized_df)
@@ -149,6 +294,10 @@ def test_endpoint():
                 # Print support and resistance levels
                 print("\nSupport and Resistance Levels:")
                 print(cache[symbol]['levels'])
+                
+                # Export final data
+                export_df_to_csv(normalized_df, "stage5_final_normalized_data", symbol)
+                export_df_to_csv(levels_df, "stage6_support_resistance_levels", symbol)
                 
             print("\n===== DATA PROCESSING COMPLETE =====")
             
