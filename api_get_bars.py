@@ -11,7 +11,7 @@ from datetime import datetime
 from jmaitoolbox import normalize_data, detect_support_resistance, cluster_price_levels_with_strength
 
 # Configuration
-EXPORT_TO_CSV = True  # Set to False to disable CSV exports
+EXPORT_TO_CSV = False  # Set to False to disable CSV exports
 CSV_OUTPUT_DIR = "data_exports"  # Directory to store CSV files
 
 # Create output directory if it doesn't exist
