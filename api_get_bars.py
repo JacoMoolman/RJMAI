@@ -341,6 +341,11 @@ def test_endpoint():
                     'levels': levels_df
                 }
                 
+                # Set pandas display options
+                pd.set_option('display.max_columns', None)
+                pd.set_option('display.max_rows', 10)  # Show first/last few rows
+                pd.set_option('display.width', 1000)
+                
                 # Export final data
                 export_df_to_csv(normalized_df, "stage5_final_normalized_data", symbol)
                 export_df_to_csv(levels_df, "stage6_support_resistance_levels", symbol)
@@ -375,9 +380,26 @@ def test_endpoint():
                 # No trade open, generate random action
                 # Generate random trade instruction (B=Buy, S=Sell, H=Hold)
                 trade_instruction = random.choice(["B", "S", "H"])
+                print(f"\n----- Randomly Selected Action: {trade_instruction} -----")
                 
                 # Store the action for tracking
                 if trade_instruction in ["B", "S"]:
+                    # Display the DataFrames for verification before making trading decisions
+                    print("\n----- DISPLAYING DATA BEFORE TRADING DECISION -----")
+                    if normalized_df is not None:
+                        print("\nPrice Data DataFrame (first/last few rows):")
+                        print(normalized_df)
+                        print(f"\nTotal rows in price_data: {len(normalized_df)}")
+                    else:
+                        print("\nPrice Data DataFrame: None")
+                        
+                    if levels_df is not None:
+                        print("\nSupport/Resistance Levels DataFrame:")
+                        print(levels_df)
+                    else:
+                        print("\nLevels DataFrame: None")
+                    print("----- END OF DATA DISPLAY -----\n")
+                    
                     last_trade_action = trade_instruction
                 
                 # Generate random parameters for trading
