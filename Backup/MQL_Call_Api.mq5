@@ -97,7 +97,7 @@ void OnTick()
       // --- Check if connected before proceeding ---
       if(TerminalInfoInteger(TERMINAL_CONNECTED) && !MQLInfoInteger(MQL_DEBUG)) // Don't trade if not connected or debugging
       {
-          PrintFormat("New bar detected on %s. Previous: %s, Current: %s. Processing...",
+          PrintFormat("#############################################################################################################################New bar detected on %s. Previous: %s, Current: %s. Processing...",
                       TimeframeToString(Period()), TimeToString(lastBarTime), TimeToString(currentBarTime));
 
           // --- Send data and get instructions ---
@@ -203,7 +203,7 @@ string SendDataAndGetInstruction()
 
       if (copied_count > 0)
       {
-         PrintFormat("Fetched %d bars for %s (requested %d)", copied_count, tf_string, bars_to_fetch_for_this_tf);
+         //PrintFormat("Fetched %d bars for %s (requested %d)", copied_count, tf_string, bars_to_fetch_for_this_tf);
          if (!first_tf) { json_payload += ","; }
          first_tf = false;
          json_payload += "\"" + tf_string + "\": [";
@@ -365,7 +365,7 @@ string SendDataAndGetInstruction()
    {
         Print("Sending API request to: ", url);
         // Print("Payload snippet: ", StringSubstr(json_payload, 0, 200)); // Optional: uncomment for debugging
-        Print("Payload length: ", StringLen(json_payload));
+        //Print("Payload length: ", StringLen(json_payload));
 
         string response = Post(url, json_payload);
         Print("API Response Raw: ", response); // Log the raw response
