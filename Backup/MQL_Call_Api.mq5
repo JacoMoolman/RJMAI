@@ -137,9 +137,13 @@ string SendDataAndGetInstruction()
    string symbol_name = Symbol();
    string instruction = ""; // Initialize instruction string
 
+   // --- Check for existing position for THIS symbol and THIS magic number ---
+   bool position_exists = false;
+   double open_trade_pnl = 0.0;
+   
    // --- Get Account Information ---
    double account_balance = AccountInfoDouble(ACCOUNT_BALANCE);
-   double open_trade_pnl = 0.0;
+   
    int total_positions = PositionsTotal();
    for(int i = total_positions - 1; i >= 0; i--) // Loop backwards is safer if closing positions
    {
@@ -148,13 +152,72 @@ string SendDataAndGetInstruction()
       {
          if(PositionGetString(POSITION_SYMBOL) == symbol_name && PositionGetInteger(POSITION_MAGIC) == InpMagicNumber)
          {
+            position_exists = true;
             open_trade_pnl = PositionGetDouble(POSITION_PROFIT);
-            // PrintFormat("Found open position #%d for %s, PnL: %.2f", ticket, symbol_name, open_trade_pnl); // Debugging
             break; // Found the relevant position for this symbol/magic
          }
       }
    }
-   // PrintFormat("Account Balance: %.2f, Open Trade PnL for %s: %.2f", account_balance, symbol_name, open_trade_pnl); // Debugging
+
+   // Build different JSON depending on if position exists
+   string json_payload;
+   
+   if(position_exists)
+   {
+      // If position exists, send minimal data (just account info and trade status)
+      PrintFormat("Position exists - sending minimal data");
+      
+      json_payload = "{";
+      json_payload += "\"symbol\": \"" + symbol_name + "\","; 
+      json_payload += "\"account_balance\": " + DoubleToString(account_balance, 2) + ",";
+      json_payload += "\"open_trade_pnl\": " + DoubleToString(open_trade_pnl, 2) + ",";
+      json_payload += "\"position_exists\": true,";
+      json_payload += "\"data\": {}"; // Empty data object
+      json_payload += "}";
+      
+      // --- Include last error message if there was one ---
+      if(lastError != "")
+      {
+         // Remove closing braces to add error field
+         json_payload = StringSubstr(json_payload, 0, StringLen(json_payload) - 1); 
+         json_payload += ", \"error\": \"" + lastError + "\"}";
+         Print("Including error in payload: ", lastError);
+         lastError = ""; // Clear the error after sending
+      }
+      
+      // Send the minimal payload
+      Print("Sending minimal data to API (position exists)");
+      string response = Post(url, json_payload);
+      
+      // Parse the response to extract instruction
+      if(response != "")
+      {
+         if(StringFind(response, "INSTRUCTION:") >= 0)
+         {
+            // Extract the instruction part after "INSTRUCTION: "
+            int pos = StringFind(response, "INSTRUCTION:") + 13; // 13 is the length of "INSTRUCTION: "
+            instruction = StringSubstr(response, pos, StringLen(response) - pos - 2); // -2 to remove trailing quotes and brace
+            Print("Parsed Instruction: '", instruction, "'");
+         }
+         else
+         {
+            Print("Error: 'INSTRUCTION: ' key not found in response: ", response);
+            instruction = "Error";
+         }
+      }
+      
+      return instruction;
+   }
+   
+   // If no position exists, proceed with full data collection
+   PrintFormat("No position exists - collecting and sending full market data");
+   
+   json_payload = "{";
+   json_payload += "\"symbol\": \"" + symbol_name + "\","; // Symbol first
+   json_payload += "\"account_balance\": " + DoubleToString(account_balance, 2) + ","; // Add balance
+   json_payload += "\"open_trade_pnl\": " + DoubleToString(open_trade_pnl, 2) + ",";   // Add PnL
+   json_payload += "\"position_exists\": false,"; // Explicitly state no position exists
+   json_payload += "\"data\": {"; // Now the data block
 
    // Define the timeframes to fetch using the ENUM values
    ENUM_TIMEFRAMES timeframes_to_send[] =
@@ -166,13 +229,6 @@ string SendDataAndGetInstruction()
       PERIOD_M5,
       PERIOD_M1
    };
-
-   // --- Build the JSON Payload ---
-   string json_payload = "{";
-   json_payload += "\"symbol\": \"" + symbol_name + "\","; // Symbol first
-   json_payload += "\"account_balance\": " + DoubleToString(account_balance, 2) + ","; // Add balance
-   json_payload += "\"open_trade_pnl\": " + DoubleToString(open_trade_pnl, 2) + ",";   // Add PnL
-   json_payload += "\"data\": {"; // Now the data block
 
    int tf_count = ArraySize(timeframes_to_send);
    bool first_tf = true; // Flag to handle commas between timeframes

@@ -15,6 +15,12 @@ from jmaitoolbox import normalize_data, detect_support_resistance, cluster_price
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
+# Global trade tracking variables
+current_trade_open = False
+previous_pnl = 0.0
+last_trade_action = None
+trade_count = 0
+
 # Configuration
 EXPORT_TO_CSV = False  # Set to False to disable CSV exports
 CSV_OUTPUT_DIR = "data_exports"  # Directory to store CSV files
@@ -56,6 +62,9 @@ MAX_SR_LEVELS = 20  # Maximum number of support/resistance levels to track
 def test_endpoint():
     print("\n===== NEW REQUEST RECEIVED =====")
     
+    # Access global variables
+    global current_trade_open, previous_pnl, last_trade_action, trade_count
+    
     try:
         # Handle JSON data from MQL5
         if request.is_json:
@@ -81,45 +90,88 @@ def test_endpoint():
         symbol = data.get('symbol', 'UNKNOWN') # Use .get for safety
         account_balance = data.get('account_balance', 0.0) # Default to 0.0 if missing
         open_trade_pnl = data.get('open_trade_pnl', 0.0)   # Default to 0.0 if missing
+        position_exists = data.get('position_exists', False) # Check if position exists
 
         # Display balance and PnL
         print(f"\n----- Account Info ----- ")
         print(f"Symbol: {symbol}")
         print(f"Account Balance: {account_balance:.2f}")
         print(f"Open Trade PnL: {open_trade_pnl:.2f}")
+        print(f"Position Exists: {position_exists}")
+        
+        # Check if trade state has changed
+        if current_trade_open and open_trade_pnl == 0.0:
+            # Trade has been closed (previously had a position, now PnL is 0)
+            profit = previous_pnl  # Last known PnL before closing
+            print(f"-------------------------")
+            print(f"\n===== TRADE COMPLETED =====")
+            print(f"Action: {last_trade_action}")
+            print(f"Final P/L: {profit:.2f}")
+            print(f"============================")
+            
+            # Reset trade state
+            current_trade_open = False
+            trade_count += 1
+        elif not current_trade_open and open_trade_pnl != 0.0:
+            # New trade has been opened
+            print(f"-------------------------")
+            print(f"\n===== NEW TRADE OPENED =====")
+            print(f"Action: {last_trade_action}")
+            print(f"============================")
+            
+            # Update state to indicate trade is open
+            current_trade_open = True
+        
+        # Update previous PnL for next comparison
+        previous_pnl = open_trade_pnl
+        
+        print(f"Current Trade State: {'OPEN' if current_trade_open else 'CLOSED'}")
+        print(f"Total Completed Trades: {trade_count}")
         print(f"-------------------------")
 
         # Process and display forex data using pandas
         if 'data' in data:
             timeframes_data = data['data']
             
-            # print(f"\n===== RECEIVED DATA FOR SYMBOL: {symbol} =====")
+            # Log whether we received market data
+            if timeframes_data and len(timeframes_data) > 0:
+                print(f"\n----- Data Received: YES -----")
+                timeframe_keys = list(timeframes_data.keys())
+                print(f"Timeframes: {', '.join(timeframe_keys)}")
+            else:
+                print(f"\n----- Data Received: NO (position exists, using minimal data) -----")
             
             # List to store DataFrames for each timeframe for concatenation
             ##### PROCESS TIME #######
             
-            # Timeframe mapping to normalized values between 0 and 1
-            timeframe_map = {
-                'M1': 0.0,     # 1-minute - Now the minimum value
-                'M5': 0.2,     # 5-minute - Adjusted scaling
-                'M30': 0.4,    # 30-minute - Adjusted scaling
-                'H1': 0.6,     # 1-hour - Adjusted scaling
-                'H4': 0.8,     # 4-hour - Adjusted scaling
-                'D1': 1.0      # Daily (maximum)
-            }
-            
-            # Get normalized dataframes for each timeframe
-            dfs_list = normalize_data(timeframes_data, timeframe_map)
-            
-            # Export raw dataframes before additional normalization
-            for i, df in enumerate(dfs_list):
-                tf = df['timeframe'].iloc[0]
-                export_df_to_csv(df, f"stage1_raw_timeframe_{tf}", symbol)
+            # Only process data if we actually received timeframe data
+            dfs_list = []
+            if timeframes_data and len(timeframes_data) > 0:
+                # Timeframe mapping to normalized values between 0 and 1
+                timeframe_map = {
+                    'M1': 0.0,     # 1-minute - Now the minimum value
+                    'M5': 0.2,     # 5-minute - Adjusted scaling
+                    'M30': 0.4,    # 30-minute - Adjusted scaling
+                    'H1': 0.6,     # 1-hour - Adjusted scaling
+                    'H4': 0.8,     # 4-hour - Adjusted scaling
+                    'D1': 1.0      # Daily (maximum)
+                }
+                
+                # Get normalized dataframes for each timeframe
+                dfs_list = normalize_data(timeframes_data, timeframe_map)
+                
+                # Export raw dataframes before additional normalization
+                for i, df in enumerate(dfs_list):
+                    tf = df['timeframe'].iloc[0]
+                    export_df_to_csv(df, f"stage1_raw_timeframe_{tf}", symbol)
                             
             ##### PROCESS TIME #######
 
             
             # Concatenate all dataframes into a single dataframe
+            normalized_df = None
+            levels_df = None
+            
             if dfs_list:
                 # --- MODIFIED NORMALIZATION BLOCK ---
                 # First normalize each dataframe individually by timeframe
@@ -289,51 +341,62 @@ def test_endpoint():
                     'levels': levels_df
                 }
                 
-                # Display the combined DataFrame with truncation (showing ... in the middle)
-                pd.set_option('display.max_columns', None)
-                pd.set_option('display.max_rows', 10)  # Show all rows
-                pd.set_option('display.width', 1000)
-                
-                # Print full normalized dataframe
-                # print(cache[symbol]['price_data'])
-                
-                # Print total number of rows for verification
-                # print(f"\nTotal number of rows in combined dataframe: {len(cache[symbol]['price_data'])}")
-                # for tf in timeframe_map.keys():
-                #     count = len([x for x in timeframes_data.keys() if x == tf])
-                #     if count > 0:
-                #         print(f"  {tf}: {len(timeframes_data[tf])} bars")
-                
-                # Print support and resistance levels
-                # print("\nSupport and Resistance Levels:")
-                # print(cache[symbol]['levels'])
-                
                 # Export final data
                 export_df_to_csv(normalized_df, "stage5_final_normalized_data", symbol)
                 export_df_to_csv(levels_df, "stage6_support_resistance_levels", symbol)
                 
-            print("\n===== DATA PROCESSING COMPLETE =====")
-            
-            # Generate random trade instruction (B=Buy, S=Sell, H=Hold)
-            trade_instruction = random.choice(["B", "S", "H"])
-            
-            # Generate random parameters for trading
-            if trade_instruction in ["B", "S"]:
-                # Generate random lot size between 0.01 and 1.00
-                lot_size = round(random.uniform(0.01, 1.00), 2)
-                
-                # Generate random SL and TP values
-                sl_points = round(random.uniform(50, 200), 1)
-                tp_points = round(random.uniform(50, 200), 1)
-                
-                # Format the instruction with parameters
-                instruction_with_params = f"{trade_instruction}|{lot_size}|{sl_points}|{tp_points}"
-                print(f"\n===== SENDING TRADE INSTRUCTION: {instruction_with_params} =====")
-                return jsonify({"response": f"INSTRUCTION: {instruction_with_params}"})
+                print("\n----- Data Processing Complete -----")
             else:
-                # For Hold instruction, no parameters needed
-                print(f"\n===== SENDING TRADE INSTRUCTION: {trade_instruction} =====")                        
+                # If we don't have data (position exists), use previously cached data if available
+                if symbol in cache:
+                    print("\n----- Using Cached Data -----")
+                    normalized_df = cache[symbol]['price_data']
+                    levels_df = cache[symbol]['levels']
+                else:
+                    print("\n----- No Data to Process -----")
+            
+            # Decide trade action based on current state and position_exists flag
+            # The position_exists flag from MQL should match our current_trade_open state
+            # If they don't match, trust the MQL side and adjust our state
+            if position_exists != current_trade_open:
+                print(f"\n----- Trade State Mismatch -----")
+                print(f"Python thinks trade is: {'OPEN' if current_trade_open else 'CLOSED'}")
+                print(f"MQL reports trade is: {'OPEN' if position_exists else 'CLOSED'}")
+                print(f"Adjusting to match MQL state")
+                current_trade_open = position_exists
+            
+            # Only send B/S if no trade is currently open
+            if current_trade_open:
+                # If a trade is open, always send Hold
+                trade_instruction = "H"
+                print(f"\n===== SENDING TRADE INSTRUCTION: {trade_instruction} =====")
                 return jsonify({"response": f"INSTRUCTION: {trade_instruction}"})
+            else:
+                # No trade open, generate random action
+                # Generate random trade instruction (B=Buy, S=Sell, H=Hold)
+                trade_instruction = random.choice(["B", "S", "H"])
+                
+                # Store the action for tracking
+                if trade_instruction in ["B", "S"]:
+                    last_trade_action = trade_instruction
+                
+                # Generate random parameters for trading
+                if trade_instruction in ["B", "S"]:
+                    # Generate random lot size between 0.01 and 1.00
+                    lot_size = round(random.uniform(0.01, 1.00), 2)
+                    
+                    # Generate random SL and TP values
+                    sl_points = round(random.uniform(50, 200), 1)
+                    tp_points = round(random.uniform(50, 200), 1)
+                    
+                    # Format the instruction with parameters
+                    instruction_with_params = f"{trade_instruction}|{lot_size}|{sl_points}|{tp_points}"
+                    print(f"\n===== SENDING TRADE INSTRUCTION: {instruction_with_params} =====")
+                    return jsonify({"response": f"INSTRUCTION: {instruction_with_params}"})
+                else:
+                    # For Hold instruction, no parameters needed
+                    print(f"\n===== SENDING TRADE INSTRUCTION: {trade_instruction} =====")                        
+                    return jsonify({"response": f"INSTRUCTION: {trade_instruction}"})
         else:
             print("Invalid data format - missing 'symbol' or 'data' fields")
             return jsonify({"response": "Error: Invalid data format"})
