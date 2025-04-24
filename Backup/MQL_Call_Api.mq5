@@ -48,6 +48,7 @@ input int    InpADXPeriod    = 14;     // ADX Period
 //+------------------------------------------------------------------+
 CTrade trade; // Trade execution object
 static datetime lastBarTime = 0; // Tracks the last bar time for new bar detection
+static string lastError = ""; // Stores the last error for sending in the next data cycle
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -360,6 +361,16 @@ string SendDataAndGetInstruction()
 
    json_payload += "}}"; // Close "data" and main object
 
+   // --- Include last error message if there was one ---
+   if(lastError != "")
+   {
+      // Remove closing braces to add error field
+      json_payload = StringSubstr(json_payload, 0, StringLen(json_payload) - 1); 
+      json_payload += ", \"error\": \"" + lastError + "\"}";
+      Print("Including error in payload: ", lastError);
+      lastError = ""; // Clear the error after sending
+   }
+
    // --- Send Payload and Parse Response ---
    if (!first_tf) // Only send if data was added
    {
@@ -438,23 +449,53 @@ void ProcessInstruction(string instruction)
       }
    }
 
+   // Parse instruction - now may include parameters
+   string instruction_parts[];
+   int parts_count = StringSplit(instruction, '|', instruction_parts);
+   string action = instruction_parts[0]; // The first part is the action (B, S, H)
+
+   // Extract parameters if provided for Buy/Sell instructions
+   double lots = InpLots; // Default to input parameter
+   double sl_points = 0.0; // Default no SL
+   double tp_points = 0.0; // Default no TP
+   
+   if(parts_count >= 4 && (action == "B" || action == "S"))
+   {
+      // Parse parameters from instruction
+      lots = StringToDouble(instruction_parts[1]);
+      sl_points = StringToDouble(instruction_parts[2]);
+      tp_points = StringToDouble(instruction_parts[3]);
+      
+      Print("Parsed trading parameters: Lots=", lots, ", SL=", sl_points, ", TP=", tp_points);
+   }
+
    // --- Act on Instruction ---
-   if(instruction == "B") // Buy Instruction
+   if(action == "B") // Buy Instruction
    {
       if(position_exists)
       {
          Print("Instruction 'B' received, but a position (Magic: ", InpMagicNumber, ") already exists for ", symbol, ". Holding.");
+         // Store error message locally
+         lastError = "Position already exists - cannot open BUY";
       }
       else
       {
          Print("Instruction 'B' received. Opening BUY order for ", symbol);
          double sl = 0.0;
          double tp = 0.0;
+         
+         // Calculate actual SL/TP prices if points are provided
+         if(sl_points > 0) sl = ask - (sl_points * point);
+         if(tp_points > 0) tp = ask + (tp_points * point);
 
-         // Use trade object to open position without SL/TP
-         if(!trade.Buy(InpLots, symbol, ask, 0.0, 0.0, "Buy signal from API")) // Pass 0.0 for sl and tp
+         // Use trade object to open position with SL/TP
+         if(!trade.Buy(lots, symbol, ask, sl, tp, "Buy signal from API"))
          {
-            Print("Error Opening Buy Order: ", trade.ResultRetcode(), " - ", trade.ResultComment());
+            string error_msg = "Error Opening Buy Order: " + (string)trade.ResultRetcode() + " - " + trade.ResultComment();
+            Print(error_msg);
+            
+            // Store error message locally
+            lastError = error_msg;
          }
          else
          {
@@ -462,22 +503,32 @@ void ProcessInstruction(string instruction)
          }
       }
    }
-   else if(instruction == "S") // Sell Instruction
+   else if(action == "S") // Sell Instruction
    {
       if(position_exists)
       {
          Print("Instruction 'S' received, but a position (Magic: ", InpMagicNumber, ") already exists for ", symbol, ". Holding.");
+         // Store error message locally
+         lastError = "Position already exists - cannot open SELL";
       }
       else
       {
          Print("Instruction 'S' received. Opening SELL order for ", symbol);
          double sl = 0.0;
          double tp = 0.0;
+         
+         // Calculate actual SL/TP prices if points are provided
+         if(sl_points > 0) sl = bid + (sl_points * point);
+         if(tp_points > 0) tp = bid - (tp_points * point);
 
-         // Use trade object to open position without SL/TP
-         if(!trade.Sell(InpLots, symbol, bid, 0.0, 0.0, "Sell signal from API")) // Pass 0.0 for sl and tp
+         // Use trade object to open position with SL/TP
+         if(!trade.Sell(lots, symbol, bid, sl, tp, "Sell signal from API"))
          {
-            Print("Error Opening Sell Order: ", trade.ResultRetcode(), " - ", trade.ResultComment());
+            string error_msg = "Error Opening Sell Order: " + (string)trade.ResultRetcode() + " - " + trade.ResultComment();
+            Print(error_msg);
+            
+            // Store error message locally
+            lastError = error_msg;
          }
          else
          {
@@ -485,33 +536,13 @@ void ProcessInstruction(string instruction)
          }
       }
    }
-   else if(instruction == "C") // Close Instruction
-   {
-      if(position_exists)
-      {
-         Print("Instruction 'C' received. Closing position for ", symbol, " (Magic: ", InpMagicNumber, ")");
-         // CTrade::PositionClose will automatically close the position selected by PositionSelect if magic matches
-         if(!trade.PositionClose(symbol)) // Closes the position for the specified symbol (uses magic number set in OnInit)
-         {
-            Print("Error Closing Position: ", trade.ResultRetcode(), " - ", trade.ResultComment());
-         }
-         else
-         {
-            Print("Position Closed Successfully. Result: ", trade.ResultComment()); // ResultComment often has details on close
-         }
-      }
-      else
-      {
-         Print("Instruction 'C' received, but no open position found for ", symbol, " with Magic ", InpMagicNumber, ".");
-      }
-   }
-   else if(instruction == "H") // Hold Instruction
+   else if(action == "H") // Hold Instruction
    {
       Print("Instruction 'H' received. No action taken.");
    }
    else // Invalid Instruction
    {
-      Print("Warning: Received unknown or invalid instruction '", instruction, "'. No action taken.");
+      Print("Warning: Received unknown or invalid instruction '", action, "'. No action taken.");
    }
 }
 

@@ -7,8 +7,13 @@ import random
 import math
 import numpy as np
 import os
+import logging
 from datetime import datetime
 from jmaitoolbox import normalize_data, detect_support_resistance, cluster_price_levels_with_strength
+
+# Disable Flask logging
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 # Configuration
 EXPORT_TO_CSV = False  # Set to False to disable CSV exports
@@ -63,6 +68,15 @@ def test_endpoint():
             # Parse the fixed JSON data
             data = json.loads(fixed_data)
         
+        # Check for error message from MQL
+        if 'error' in data:
+            error_msg = data['error']
+            print(f"\n----- ERROR RECEIVED FROM MQL -----")
+            print(f"Error: {error_msg}")
+            print(f"-------------------------")
+            # Return acknowledgment of error
+            return jsonify({"response": f"Error received: {error_msg}"})
+        
         # Extract symbol, balance, and PnL first
         symbol = data.get('symbol', 'UNKNOWN') # Use .get for safety
         account_balance = data.get('account_balance', 0.0) # Default to 0.0 if missing
@@ -79,7 +93,7 @@ def test_endpoint():
         if 'data' in data:
             timeframes_data = data['data']
             
-            print(f"\n===== RECEIVED DATA FOR SYMBOL: {symbol} =====")
+            # print(f"\n===== RECEIVED DATA FOR SYMBOL: {symbol} =====")
             
             # List to store DataFrames for each timeframe for concatenation
             ##### PROCESS TIME #######
@@ -281,19 +295,18 @@ def test_endpoint():
                 pd.set_option('display.width', 1000)
                 
                 # Print full normalized dataframe
-                print(cache[symbol]['price_data'])
+                # print(cache[symbol]['price_data'])
                 
                 # Print total number of rows for verification
-                print(f"\nTotal number of rows in combined dataframe: {len(cache[symbol]['price_data'])}")
-                print(f"Rows per timeframe:")
-                for tf in timeframe_map.keys():
-                    count = len([x for x in timeframes_data.keys() if x == tf])
-                    if count > 0:
-                        print(f"  {tf}: {len(timeframes_data[tf])} bars")
+                # print(f"\nTotal number of rows in combined dataframe: {len(cache[symbol]['price_data'])}")
+                # for tf in timeframe_map.keys():
+                #     count = len([x for x in timeframes_data.keys() if x == tf])
+                #     if count > 0:
+                #         print(f"  {tf}: {len(timeframes_data[tf])} bars")
                 
                 # Print support and resistance levels
-                print("\nSupport and Resistance Levels:")
-                print(cache[symbol]['levels'])
+                # print("\nSupport and Resistance Levels:")
+                # print(cache[symbol]['levels'])
                 
                 # Export final data
                 export_df_to_csv(normalized_df, "stage5_final_normalized_data", symbol)
@@ -301,11 +314,26 @@ def test_endpoint():
                 
             print("\n===== DATA PROCESSING COMPLETE =====")
             
-            # Generate random trade instruction (B=Buy, S=Sell, H=Hold, C=Close)
-            trade_instruction = random.choice(["B", "S", "H", "C"])
+            # Generate random trade instruction (B=Buy, S=Sell, H=Hold)
+            trade_instruction = random.choice(["B", "S", "H"])
             
-            print(f"\n===== SENDING TRADE INSTRUCTION: {trade_instruction} =====")                        
-            return jsonify({"response": f"INSTRUCTION: {trade_instruction}"})
+            # Generate random parameters for trading
+            if trade_instruction in ["B", "S"]:
+                # Generate random lot size between 0.01 and 1.00
+                lot_size = round(random.uniform(0.01, 1.00), 2)
+                
+                # Generate random SL and TP values
+                sl_points = round(random.uniform(50, 200), 1)
+                tp_points = round(random.uniform(50, 200), 1)
+                
+                # Format the instruction with parameters
+                instruction_with_params = f"{trade_instruction}|{lot_size}|{sl_points}|{tp_points}"
+                print(f"\n===== SENDING TRADE INSTRUCTION: {instruction_with_params} =====")
+                return jsonify({"response": f"INSTRUCTION: {instruction_with_params}"})
+            else:
+                # For Hold instruction, no parameters needed
+                print(f"\n===== SENDING TRADE INSTRUCTION: {trade_instruction} =====")                        
+                return jsonify({"response": f"INSTRUCTION: {trade_instruction}"})
         else:
             print("Invalid data format - missing 'symbol' or 'data' fields")
             return jsonify({"response": "Error: Invalid data format"})
@@ -320,4 +348,4 @@ if __name__ == '__main__':
     print("Send a POST request to http://localhost:5000/test with data")
     print("Waiting for MQL5 data...")
     print("=================================\n")
-    app.run(debug=True)
+    app.run(debug=True, host='localhost', port=5000, use_reloader=False)
