@@ -6,6 +6,11 @@ import pandas as pd
 from datetime import datetime
 import pytz
 
+# Set pandas display options to show all rows
+pd.set_option('display.max_rows', None)  # Show all rows
+pd.set_option('display.width', None)     # Auto-detect terminal width
+pd.set_option('display.max_columns', None)  # Show all columns
+
 def download_bars(symbol, timeframe, count=10):
     """
     Download specified number of bars for a given symbol and timeframe
@@ -51,17 +56,19 @@ def main():
         "M1": mt5.TIMEFRAME_M1,
         "M5": mt5.TIMEFRAME_M5,
         "M30": mt5.TIMEFRAME_M30,
-        "H1": mt5.TIMEFRAME_H1
+        "H1": mt5.TIMEFRAME_H1,
+        "H4": mt5.TIMEFRAME_H4,
+        "D1": mt5.TIMEFRAME_D1
     }
     
     # Download 10 bars for each timeframe
     for name, tf in timeframes.items():
         print(f"\nDownloading {name} timeframe data for {symbol}...")
-        bars_data = download_bars(symbol, tf, 10)
+        bars_data = download_bars(symbol, tf, 100)
         
         if bars_data is not None:
             print(f"Downloaded {len(bars_data)} bars from {name} timeframe")
-            print(bars_data)
+            print(bars_data[['time', 'open', 'high', 'low', 'close']])
         else:
             print(f"Failed to download data for {symbol} on {name} timeframe")
     
