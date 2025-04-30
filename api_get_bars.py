@@ -25,6 +25,9 @@ trade_count = 0
 EXPORT_TO_CSV = False  # Set to False to disable CSV exports
 CSV_OUTPUT_DIR = "data_exports"  # Directory to store CSV files
 
+# Default lot size
+DEFAULT_LOT_SIZE = 0.01
+
 # Create output directory if it doesn't exist
 if EXPORT_TO_CSV and not os.path.exists(CSV_OUTPUT_DIR):
     os.makedirs(CSV_OUTPUT_DIR)
@@ -57,6 +60,52 @@ app = Flask(__name__)
 # Global configuration variables
 cache = {}
 MAX_SR_LEVELS = 20  # Maximum number of support/resistance levels to track
+
+def calculate_sl_tp(normalized_df, action, current_price, ai_normalized_sl, ai_normalized_tp):
+    """
+    Calculate Stop Loss and Take Profit values based on normalized data.
+    
+    Args:
+        normalized_df: DataFrame with normalized market data
+        action: Trading action ('BUY' or 'SELL')
+        current_price: Current market price
+        ai_normalized_sl: AI-selected normalized SL value (0-1 range)
+        ai_normalized_tp: AI-selected normalized TP value (0-1 range)
+        
+    Returns:
+        tuple: (normalized_sl, normalized_tp, actual_sl, actual_tp)
+    """
+    # These normalized values (0-1) are what the AI would select
+    normalized_sl = ai_normalized_sl
+    normalized_tp = ai_normalized_tp
+    
+    # Convert normalized SL/TP back to actual price values
+    # First, find the actual price range in the current symbol
+    price_data = normalized_df[['timeframe', 'open', 'high', 'low', 'close']]
+    actual_min = float('inf')
+    actual_max = float('-inf')
+    
+    # Find the original price range before normalization
+    for timeframe_group in price_data.groupby('timeframe'):
+        tf_data = timeframe_group[1]
+        actual_min = min(actual_min, tf_data['low'].min())
+        actual_max = max(actual_max, tf_data['high'].max())
+    
+    actual_range = actual_max - actual_min
+    
+    # Convert to actual price values based on the action
+    if action == "BUY":
+        actual_sl = current_price - (normalized_sl * actual_range / 10)
+        actual_tp = current_price + (normalized_tp * actual_range / 10)
+    else:  # SELL
+        actual_sl = current_price + (normalized_sl * actual_range / 10)
+        actual_tp = current_price - (normalized_tp * actual_range / 10)
+    
+    # Format to 5 digits after decimal
+    actual_sl = round(actual_sl, 5)
+    actual_tp = round(actual_tp, 5)
+    
+    return normalized_sl, normalized_tp, actual_sl, actual_tp
 
 @app.route('/test', methods=['POST'])
 def test_endpoint():
@@ -237,8 +286,37 @@ def test_endpoint():
                     weights = [0.4, 0.4, 0.2]  # 40% buy, 40% sell, 20% hold
                     instruction = random.choices(choices, weights=weights, k=1)[0]
                     
+                    # Calculate SL/TP if it's a BUY or SELL instruction
+                    sl_tp_part = ""
+                    if instruction in ["BUY", "SELL"]:
+                        # Get the current price for the symbol
+                        current_price = float(timeframes_data[timeframe_keys[0]][0]['close'])  # Use the most recent close price from the first timeframe
+                        
+                        # Here an AI would generate normalized SL/TP values between
+                        # 0 and 1 directly based on the normalized data
+                        # For now, using placeholder values that will be replaced by AI
+                        ai_normalized_sl = 0.9  # This would come from the AI
+                        ai_normalized_tp = 0.1  # This would come from the AI
+                        
+                        # Calculate SL/TP values
+                        norm_sl, norm_tp, actual_sl, actual_tp = calculate_sl_tp(
+                            normalized_df, instruction, current_price,
+                            ai_normalized_sl=ai_normalized_sl,
+                            ai_normalized_tp=ai_normalized_tp
+                        )
+                        
+                        # Format SL/TP part of the instruction
+                        # Format: "BUY:0.01:1.25648:1.35792" (Action:Lots:SL:TP)
+                        sl_tp_part = f":{DEFAULT_LOT_SIZE}:{actual_sl:.5f}:{actual_tp:.5f}"
+                        
+                        print(f"Normalized SL: {norm_sl:.5f}, Normalized TP: {norm_tp:.5f}")
+                        print(f"Actual SL: {actual_sl:.5f}, Actual TP: {actual_tp:.5f}")
+                    
+                    # Complete instruction with SL/TP if applicable
+                    final_instruction = instruction + (sl_tp_part if instruction in ["BUY", "SELL"] else "")
+                    
                     print(f"\n----- TRADING INSTRUCTION -----")
-                    print(f"Instruction: {instruction}")
+                    print(f"Instruction: {final_instruction}")
                     
                     # Remember this action for next time a trade completes
                     last_trade_action = instruction
@@ -248,7 +326,7 @@ def test_endpoint():
                         current_trade_open = True
             
             # Return the trading instruction
-            return jsonify({"response": f"Data processed successfully. INSTRUCTION: {instruction}"})
+            return jsonify({"response": f"Data processed successfully. INSTRUCTION: {final_instruction}"})
         else:
             # This should not happen with the new communication flow
             # MQL should never send data when a position exists

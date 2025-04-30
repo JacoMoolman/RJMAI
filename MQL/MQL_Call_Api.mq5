@@ -12,7 +12,7 @@ input int InpD1Bars  = 20;  // Number of D1 bars to fetch
 
 //--- Input parameters for Trading
 input group "Trading Settings"
-input double InpLots          = 0.01;     // Trade Lot Size
+input double InpLots          = 0.01;     // Default Trade Lot Size (if not specified by API)
 input ulong  InpMagicNumber   = 12345;    // Magic Number for trades
 input uint   InpSlippage      = 10;       // Slippage in points
 input string InpApiUrl        = "http://localhost:5000/test"; // API Endpoint URL
@@ -58,7 +58,7 @@ int OnInit()
    Print("API Trading EA initializing...");
    PrintFormat("Data Bar Counts: M1=%d, M5=%d, M30=%d, H1=%d, H4=%d, D1=%d",
                InpM1Bars, InpM5Bars, InpM30Bars, InpH1Bars, InpH4Bars, InpD1Bars);
-   PrintFormat("Trading Settings: Lots=%.2f, Magic=%d, Slippage=%d points",
+   PrintFormat("Trading Settings: Default Lots=%.2f, Magic=%d, Slippage=%d points",
                InpLots, InpMagicNumber, InpSlippage);
    Print("API URL: ", InpApiUrl);
 
@@ -201,18 +201,18 @@ string SendDataAndGetInstruction()
       // Keep track of first timeframe to handle commas properly
       bool first_tf = true;
       
+      // Process each timeframe
       for (int i = 0; i < ArraySize(timeframes_to_send); i++)
       {
          ENUM_TIMEFRAMES current_tf = timeframes_to_send[i];
          string tf_string = TimeframeToString(current_tf);
          int bars_to_fetch_for_this_tf = bars_per_timeframe[i];
 
-         if (bars_to_fetch_for_this_tf <= 0) { PrintFormat("Skipping timeframe %s (bar count <= 0).", tf_string); continue; }
-
-         MqlRates rates_array[];
-         ArraySetAsSeries(rates_array, true);
-         int copied_count = CopyRates(symbol_name, current_tf, 0, bars_to_fetch_for_this_tf, rates_array);
-
+         // --- Fetch bar data ---
+         MqlRates rates[];
+         ArraySetAsSeries(rates, true); // Most recent data first
+         int copied_count = CopyRates(symbol_name, current_tf, 0, bars_to_fetch_for_this_tf, rates);
+         
          if (copied_count > 0)
          {
             //PrintFormat("Fetched %d bars for %s (requested %d)", copied_count, tf_string, bars_to_fetch_for_this_tf);
@@ -220,36 +220,25 @@ string SendDataAndGetInstruction()
             first_tf = false;
             json_payload += "\"" + tf_string + "\": [";
             
-            // Calculate indicators for this timeframe using standard MT5 indicator functions
-            double ma20[], ma50[], ma100[];
-            double upper_band[], middle_band[], lower_band[];
-            double rsi[];
-            double stoch_k[], stoch_d[];
-            double macd_main[], macd_signal[];
-            double adx[], plus_di[], minus_di[];
-            double ichimoku_tenkan[], ichimoku_kijun[], ichimoku_senkou_a[], ichimoku_senkou_b[];
+            // --- Fetch technical indicator data ---
+            // Initialize indicator buffers
+            double ma20_buffer[];
+            double ma50_buffer[];
+            double ma100_buffer[];
+            double bb_upper_buffer[];
+            double bb_middle_buffer[];
+            double bb_lower_buffer[];
+            double rsi_buffer[];
+            double stoch_k_buffer[];
+            double stoch_d_buffer[];
+            double macd_main_buffer[];
+            double macd_signal_buffer[];
+            double macd_hist_buffer[];
+            double adx_buffer[];
+            double plus_di_buffer[];
+            double minus_di_buffer[];
             
-            // Initialize arrays
-            ArraySetAsSeries(ma20, true);
-            ArraySetAsSeries(ma50, true);
-            ArraySetAsSeries(ma100, true);
-            ArraySetAsSeries(upper_band, true);
-            ArraySetAsSeries(middle_band, true);
-            ArraySetAsSeries(lower_band, true);
-            ArraySetAsSeries(rsi, true);
-            ArraySetAsSeries(stoch_k, true);
-            ArraySetAsSeries(stoch_d, true);
-            ArraySetAsSeries(macd_main, true);
-            ArraySetAsSeries(macd_signal, true);
-            ArraySetAsSeries(adx, true);
-            ArraySetAsSeries(plus_di, true);
-            ArraySetAsSeries(minus_di, true);
-            ArraySetAsSeries(ichimoku_tenkan, true);
-            ArraySetAsSeries(ichimoku_kijun, true);
-            ArraySetAsSeries(ichimoku_senkou_a, true);
-            ArraySetAsSeries(ichimoku_senkou_b, true);
-            
-            // Calculate the indicators
+            // Get indicator handles
             int ma20_handle = iMA(symbol_name, current_tf, InpMA20Period, 0, MODE_SMA, PRICE_CLOSE);
             int ma50_handle = iMA(symbol_name, current_tf, InpMA50Period, 0, MODE_SMA, PRICE_CLOSE);
             int ma100_handle = iMA(symbol_name, current_tf, InpMA100Period, 0, MODE_SMA, PRICE_CLOSE);
@@ -258,42 +247,84 @@ string SendDataAndGetInstruction()
             int stoch_handle = iStochastic(symbol_name, current_tf, InpStochKPeriod, InpStochDPeriod, InpStochSlowing, MODE_SMA, STO_LOWHIGH);
             int macd_handle = iMACD(symbol_name, current_tf, InpMACDFast, InpMACDSlow, InpMACDSignal, PRICE_CLOSE);
             int adx_handle = iADX(symbol_name, current_tf, InpADXPeriod);
-            int ichimoku_handle = iIchimoku(symbol_name, current_tf, 9, 26, 52); // Standard Ichimoku periods
             
-            // Check for valid handles
-            bool valid_handles = ma20_handle != INVALID_HANDLE && 
-                                ma50_handle != INVALID_HANDLE && 
-                                ma100_handle != INVALID_HANDLE && 
-                                bb_handle != INVALID_HANDLE && 
-                                rsi_handle != INVALID_HANDLE && 
-                                stoch_handle != INVALID_HANDLE && 
-                                macd_handle != INVALID_HANDLE && 
-                                adx_handle != INVALID_HANDLE && 
-                                ichimoku_handle != INVALID_HANDLE;
-                                
-            if (valid_handles) {
-               // Copy indicator values
-               CopyBuffer(ma20_handle, 0, 0, copied_count, ma20);
-               CopyBuffer(ma50_handle, 0, 0, copied_count, ma50);
-               CopyBuffer(ma100_handle, 0, 0, copied_count, ma100);
-               CopyBuffer(bb_handle, 0, 0, copied_count, upper_band);
-               CopyBuffer(bb_handle, 1, 0, copied_count, middle_band);
-               CopyBuffer(bb_handle, 2, 0, copied_count, lower_band);
-               CopyBuffer(rsi_handle, 0, 0, copied_count, rsi);
-               CopyBuffer(stoch_handle, 0, 0, copied_count, stoch_k);
-               CopyBuffer(stoch_handle, 1, 0, copied_count, stoch_d);
-               CopyBuffer(macd_handle, 0, 0, copied_count, macd_main);
-               CopyBuffer(macd_handle, 1, 0, copied_count, macd_signal);
-               CopyBuffer(adx_handle, 0, 0, copied_count, adx);
-               CopyBuffer(adx_handle, 1, 0, copied_count, plus_di);
-               CopyBuffer(adx_handle, 2, 0, copied_count, minus_di);
-               CopyBuffer(ichimoku_handle, 0, 0, copied_count, ichimoku_tenkan);
-               CopyBuffer(ichimoku_handle, 1, 0, copied_count, ichimoku_kijun);
-               CopyBuffer(ichimoku_handle, 2, 0, copied_count, ichimoku_senkou_a);
-               CopyBuffer(ichimoku_handle, 3, 0, copied_count, ichimoku_senkou_b);
+            // Set up arrays properly
+            ArraySetAsSeries(ma20_buffer, true);
+            ArraySetAsSeries(ma50_buffer, true);
+            ArraySetAsSeries(ma100_buffer, true);
+            ArraySetAsSeries(bb_upper_buffer, true);
+            ArraySetAsSeries(bb_middle_buffer, true);
+            ArraySetAsSeries(bb_lower_buffer, true);
+            ArraySetAsSeries(rsi_buffer, true);
+            ArraySetAsSeries(stoch_k_buffer, true);
+            ArraySetAsSeries(stoch_d_buffer, true);
+            ArraySetAsSeries(macd_main_buffer, true);
+            ArraySetAsSeries(macd_signal_buffer, true);
+            ArraySetAsSeries(macd_hist_buffer, true);
+            ArraySetAsSeries(adx_buffer, true);
+            ArraySetAsSeries(plus_di_buffer, true);
+            ArraySetAsSeries(minus_di_buffer, true);
+            
+            // Fetch indicator values
+            bool ma20_valid = CopyBuffer(ma20_handle, 0, 0, copied_count, ma20_buffer) == copied_count;
+            bool ma50_valid = CopyBuffer(ma50_handle, 0, 0, copied_count, ma50_buffer) == copied_count;
+            bool ma100_valid = CopyBuffer(ma100_handle, 0, 0, copied_count, ma100_buffer) == copied_count;
+            bool bb_upper_valid = CopyBuffer(bb_handle, 1, 0, copied_count, bb_upper_buffer) == copied_count;
+            bool bb_middle_valid = CopyBuffer(bb_handle, 0, 0, copied_count, bb_middle_buffer) == copied_count;
+            bool bb_lower_valid = CopyBuffer(bb_handle, 2, 0, copied_count, bb_lower_buffer) == copied_count;
+            bool rsi_valid = CopyBuffer(rsi_handle, 0, 0, copied_count, rsi_buffer) == copied_count;
+            bool stoch_k_valid = CopyBuffer(stoch_handle, 0, 0, copied_count, stoch_k_buffer) == copied_count;
+            bool stoch_d_valid = CopyBuffer(stoch_handle, 1, 0, copied_count, stoch_d_buffer) == copied_count;
+            bool macd_main_valid = CopyBuffer(macd_handle, 0, 0, copied_count, macd_main_buffer) == copied_count;
+            bool macd_signal_valid = CopyBuffer(macd_handle, 1, 0, copied_count, macd_signal_buffer) == copied_count;
+            bool macd_hist_valid = CopyBuffer(macd_handle, 2, 0, copied_count, macd_hist_buffer) == copied_count;
+            bool adx_valid = CopyBuffer(adx_handle, 0, 0, copied_count, adx_buffer) == copied_count;
+            bool plus_di_valid = CopyBuffer(adx_handle, 1, 0, copied_count, plus_di_buffer) == copied_count;
+            bool minus_di_valid = CopyBuffer(adx_handle, 2, 0, copied_count, minus_di_buffer) == copied_count;
+            
+            // Build JSON array for this timeframe
+            for (int j = 0; j < copied_count; j++)
+            {
+               if (j > 0) { json_payload += ","; }
+               
+               // Format basic bar data
+               json_payload += "{";
+               json_payload += "\"time\": " + TimeToString(rates[j].time, TIME_DATE|TIME_MINUTES|TIME_SECONDS) + ",";
+               json_payload += "\"open\": " + DoubleToString(rates[j].open, 6) + ",";
+               json_payload += "\"high\": " + DoubleToString(rates[j].high, 6) + ",";
+               json_payload += "\"low\": " + DoubleToString(rates[j].low, 6) + ",";
+               json_payload += "\"close\": " + DoubleToString(rates[j].close, 6) + ",";
+               json_payload += "\"volume\": " + IntegerToString(rates[j].tick_volume) + ",";
+               json_payload += "\"spread\": " + IntegerToString(rates[j].spread);
+               
+               // Add technical indicators if available
+               if (ma20_valid) { json_payload += ",\"ma20\": " + DoubleToString(ma20_buffer[j], 6); }
+               if (ma50_valid) { json_payload += ",\"ma50\": " + DoubleToString(ma50_buffer[j], 6); }
+               if (ma100_valid) { json_payload += ",\"ma100\": " + DoubleToString(ma100_buffer[j], 6); }
+               
+               if (bb_upper_valid) { json_payload += ",\"bb_upper\": " + DoubleToString(bb_upper_buffer[j], 6); }
+               if (bb_middle_valid) { json_payload += ",\"bb_middle\": " + DoubleToString(bb_middle_buffer[j], 6); }
+               if (bb_lower_valid) { json_payload += ",\"bb_lower\": " + DoubleToString(bb_lower_buffer[j], 6); }
+               
+               if (rsi_valid) { json_payload += ",\"rsi\": " + DoubleToString(rsi_buffer[j], 2); }
+               
+               if (stoch_k_valid) { json_payload += ",\"stoch_k\": " + DoubleToString(stoch_k_buffer[j], 2); }
+               if (stoch_d_valid) { json_payload += ",\"stoch_d\": " + DoubleToString(stoch_d_buffer[j], 2); }
+               
+               if (macd_main_valid) { json_payload += ",\"macd_main\": " + DoubleToString(macd_main_buffer[j], 6); }
+               if (macd_signal_valid) { json_payload += ",\"macd_signal\": " + DoubleToString(macd_signal_buffer[j], 6); }
+               if (macd_hist_valid) { json_payload += ",\"macd_hist\": " + DoubleToString(macd_hist_buffer[j], 6); }
+               
+               if (adx_valid) { json_payload += ",\"adx\": " + DoubleToString(adx_buffer[j], 2); }
+               if (plus_di_valid) { json_payload += ",\"plus_di\": " + DoubleToString(plus_di_buffer[j], 2); }
+               if (minus_di_valid) { json_payload += ",\"minus_di\": " + DoubleToString(minus_di_buffer[j], 2); }
+               
+               json_payload += "}";
             }
             
-            // Release handles to avoid resource leaks
+            json_payload += "]";
+            
+            // Release indicator handles
             if (ma20_handle != INVALID_HANDLE) IndicatorRelease(ma20_handle);
             if (ma50_handle != INVALID_HANDLE) IndicatorRelease(ma50_handle);
             if (ma100_handle != INVALID_HANDLE) IndicatorRelease(ma100_handle);
@@ -302,102 +333,44 @@ string SendDataAndGetInstruction()
             if (stoch_handle != INVALID_HANDLE) IndicatorRelease(stoch_handle);
             if (macd_handle != INVALID_HANDLE) IndicatorRelease(macd_handle);
             if (adx_handle != INVALID_HANDLE) IndicatorRelease(adx_handle);
-            if (ichimoku_handle != INVALID_HANDLE) IndicatorRelease(ichimoku_handle);
-            
-            for (int j = 0; j < copied_count; j++)
-            {
-               // Check if indicator data is valid for this bar
-               bool valid_data = valid_handles && 
-                              j < ArraySize(ma20) && j < ArraySize(ma50) && j < ArraySize(ma100) &&
-                              j < ArraySize(rsi) && j < ArraySize(stoch_k) && j < ArraySize(stoch_d) &&
-                              j < ArraySize(upper_band) && j < ArraySize(middle_band) && j < ArraySize(lower_band);
-               
-               json_payload += "{";
-               json_payload += "\"time\": "   + (string)rates_array[j].time + ",";
-               json_payload += "\"open\": "   + DoubleToString(rates_array[j].open, _Digits) + ",";
-               json_payload += "\"high\": "   + DoubleToString(rates_array[j].high, _Digits) + ",";
-               json_payload += "\"low\": "    + DoubleToString(rates_array[j].low, _Digits) + ",";
-               json_payload += "\"close\": "  + DoubleToString(rates_array[j].close, _Digits) + ",";
-               json_payload += "\"volume\": " + (string)rates_array[j].tick_volume + ",";
-               json_payload += "\"spread\": " + (string)rates_array[j].spread;
-               
-               // Add technical indicators if data is valid
-               if(valid_data) {
-                  // Moving Averages
-                  json_payload += ",\"ma20\": "  + DoubleToString(ma20[j], _Digits);
-                  json_payload += ",\"ma50\": "  + DoubleToString(ma50[j], _Digits);
-                  json_payload += ",\"ma100\": " + DoubleToString(ma100[j], _Digits);
-                  
-                  // Bollinger Bands
-                  json_payload += ",\"bb_upper\": " + DoubleToString(upper_band[j], _Digits);
-                  json_payload += ",\"bb_middle\": " + DoubleToString(middle_band[j], _Digits);
-                  json_payload += ",\"bb_lower\": " + DoubleToString(lower_band[j], _Digits);
-                  
-                  // RSI
-                  json_payload += ",\"rsi\": " + DoubleToString(rsi[j], 2);
-                  
-                  // Stochastic
-                  json_payload += ",\"stoch_k\": " + DoubleToString(stoch_k[j], 2);
-                  json_payload += ",\"stoch_d\": " + DoubleToString(stoch_d[j], 2);
-                  
-                  // MACD
-                  json_payload += ",\"macd_main\": " + DoubleToString(macd_main[j], _Digits);
-                  json_payload += ",\"macd_signal\": " + DoubleToString(macd_signal[j], _Digits);
-                  json_payload += ",\"macd_hist\": " + DoubleToString(macd_main[j] - macd_signal[j], _Digits);
-                  
-                  // ADX
-                  json_payload += ",\"adx\": " + DoubleToString(adx[j], 2);
-                  json_payload += ",\"plus_di\": " + DoubleToString(plus_di[j], 2);
-                  json_payload += ",\"minus_di\": " + DoubleToString(minus_di[j], 2);
-                  
-                  // Ichimoku
-                  json_payload += ",\"ichimoku_tenkan\": " + DoubleToString(ichimoku_tenkan[j], _Digits);
-                  json_payload += ",\"ichimoku_kijun\": " + DoubleToString(ichimoku_kijun[j], _Digits);
-                  json_payload += ",\"ichimoku_senkou_a\": " + DoubleToString(ichimoku_senkou_a[j], _Digits);
-                  json_payload += ",\"ichimoku_senkou_b\": " + DoubleToString(ichimoku_senkou_b[j], _Digits);
-               }
-               
-               json_payload += "}";
-               if (j < copied_count - 1) { json_payload += ","; }
-            }
-            json_payload += "]";
          }
          else
          {
             PrintFormat("Warning: Could not fetch bars for %s. Copied: %d (req: %d), Err: %d. Skipping.", tf_string, copied_count, bars_to_fetch_for_this_tf, GetLastError());
          }
-
-         Sleep(20); // Reduce sleep slightly, still good practice
       }
 
       json_payload += "}}"; // Close "data" and main object
 
       // --- Include last error message if there was one ---
-      if(lastError != "")
+      if (lastError != "")
       {
-         // Remove closing braces to add error field
-         json_payload = StringSubstr(json_payload, 0, StringLen(json_payload) - 1); 
-         json_payload += ", \"error\": \"" + lastError + "\"}";
-         Print("Including error in payload: ", lastError);
+         json_payload = StringSubstr(json_payload, 0, StringLen(json_payload)-1); // Remove closing brace
+         json_payload += ",\"error\": \"" + lastError + "\"}"; // Add error and close
          lastError = ""; // Clear the error after sending
       }
       
-      // Send the data and get response
-      Print("Sending data to API...");
+      // --- Send the data to the API ---
       string response = Post(url, json_payload);
-      Print("Response received: ", response);
+      //PrintFormat("Response: %s", response);
       
-      // Parse the response to extract instruction
-      if(response != "")
+      if (response != "")
       {
-         if(StringFind(response, "INSTRUCTION:") >= 0)
+         // Extract instruction from API response using standard string functions
+         string search_text = "INSTRUCTION: ";
+         int position = StringFind(response, search_text);
+         
+         if (position != -1)
          {
-            // Extract the instruction part after "INSTRUCTION: "
-            int pos = StringFind(response, "INSTRUCTION:") + 13; // 13 is the length of "INSTRUCTION: "
-            instruction = StringSubstr(response, pos, StringLen(response) - pos - 2); // -2 to remove trailing quotes and brace
-            Print("Parsed Instruction: '", instruction, "'");
+            // Found the instruction text
+            position += StringLen(search_text); // Move position to start of instruction
             
-            // Return the instruction (BUY, SELL, or HOLD)
+            // Extract instruction up to the next quote or end of string
+            int end_position = StringFind(response, "\"", position);
+            if (end_position == -1) end_position = StringLen(response); // If no quote found, use end of string
+            
+            instruction = StringSubstr(response, position, end_position - position);
+            //Print("Extracted instruction from API: ", instruction);
             return instruction;
          }
          else
@@ -429,43 +402,108 @@ void ProcessInstruction(string instruction)
       return;
    }
    
-   // Process the instruction based on first character (B=Buy, S=Sell, H=Hold)
-   ushort first_char = StringGetCharacter(instruction, 0);
+   // Check for our new format with lots, SL, TP (FORMAT: "BUY:0.01:1.12345:1.12545")
+   string components[];
+   int num_components = StringSplit(instruction, ':', components);
    
-   // Check if instruction is one of our new full words
-   if(instruction == "BUY")
+   if(num_components > 1) // Format includes SL and/or TP
    {
-      ExecuteBuyOrder();
+      string action = components[0];
+      double lots = (num_components > 1) ? StringToDouble(components[1]) : InpLots;
+      double sl_price = (num_components > 2) ? StringToDouble(components[2]) : 0.0;
+      double tp_price = (num_components > 3) ? StringToDouble(components[3]) : 0.0;
+      
+      // Execute the appropriate action
+      if(action == "BUY")
+      {
+         ExecuteBuyOrderWithParams(lots, sl_price, tp_price);
+      }
+      else if(action == "SELL")
+      {
+         ExecuteSellOrderWithParams(lots, sl_price, tp_price);
+      }
+      else
+      {
+         Print("Unknown action in instruction: ", action);
+      }
    }
-   else if(instruction == "SELL") 
+   else // Single-word format (for backward compatibility)
    {
-      ExecuteSellOrder();
-   }
-   else if(instruction == "HOLD")
-   {
-      Print("Instruction: HOLD - No trade action taken");
-   }
-   // For backward compatibility, also check for single letters
-   else if(first_char == 'B')
-   {
-      ExecuteBuyOrder();
-   }
-   else if(first_char == 'S')
-   {
-      ExecuteSellOrder();
-   }
-   else if(first_char == 'H')
-   {
-      Print("Instruction: Hold - No trade action taken");
-   }
-   else
-   {
-      Print("Unknown instruction: ", instruction);
+      // Process the instruction based on first character (B=Buy, S=Sell, H=Hold)
+      if(instruction == "BUY")
+      {
+         ExecuteBuyOrder();
+      }
+      else if(instruction == "SELL") 
+      {
+         ExecuteSellOrder();
+      }
+      else if(instruction == "HOLD")
+      {
+         Print("Instruction: HOLD - No trade action taken");
+      }
+      // For backward compatibility, also check for single letters
+      else if(StringGetCharacter(instruction, 0) == 'B')
+      {
+         ExecuteBuyOrder();
+      }
+      else if(StringGetCharacter(instruction, 0) == 'S')
+      {
+         ExecuteSellOrder();
+      }
+      else if(StringGetCharacter(instruction, 0) == 'H')
+      {
+         Print("Instruction: Hold - No trade action taken");
+      }
+      else
+      {
+         Print("Unknown instruction: ", instruction);
+      }
    }
 }
 
 //+------------------------------------------------------------------+
-//| Function to execute a BUY order                                  |
+//| Function to execute a BUY order with specific parameters         |
+//+------------------------------------------------------------------+
+void ExecuteBuyOrderWithParams(double lot_size, double sl_price, double tp_price)
+{
+   double price = SymbolInfoDouble(Symbol(), SYMBOL_ASK);
+   
+   // Execute the trade
+   Print("Executing BUY order: Lots=", lot_size, ", SL=", sl_price, ", TP=", tp_price);
+   if(!trade.Buy(lot_size, Symbol(), 0, sl_price, tp_price, "API Signal"))
+   {
+      Print("Error executing BUY order: ", GetLastError());
+      lastError = "Error executing BUY: " + IntegerToString(GetLastError());
+   }
+   else
+   {
+      Print("BUY order executed successfully");
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Function to execute a SELL order with specific parameters        |
+//+------------------------------------------------------------------+
+void ExecuteSellOrderWithParams(double lot_size, double sl_price, double tp_price)
+{
+   double price = SymbolInfoDouble(Symbol(), SYMBOL_BID);
+   
+   // Execute the trade
+   Print("Executing SELL order: Lots=", lot_size, ", SL=", sl_price, ", TP=", tp_price);
+   if(!trade.Sell(lot_size, Symbol(), 0, sl_price, tp_price, "API Signal"))
+   {
+      Print("Error executing SELL order: ", GetLastError());
+      lastError = "Error executing SELL: " + IntegerToString(GetLastError());
+   }
+   else
+   {
+      Print("SELL order executed successfully");
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Function to execute a BUY order with default parameters          |
 //+------------------------------------------------------------------+
 void ExecuteBuyOrder()
 {
@@ -495,7 +533,7 @@ void ExecuteBuyOrder()
 }
 
 //+------------------------------------------------------------------+
-//| Function to execute a SELL order                                 |
+//| Function to execute a SELL order with default parameters         |
 //+------------------------------------------------------------------+
 void ExecuteSellOrder()
 {
@@ -541,4 +579,4 @@ string TimeframeToString(ENUM_TIMEFRAMES period)
       default:         return EnumToString(period); // Fallback for unhandled enums
    }
 }
-//+-------------------------------------------------------------------++
+//+-------------------------------------------------------------------+
