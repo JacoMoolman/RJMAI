@@ -53,22 +53,15 @@ def normalize_data(timeframes_data, timeframe_map):
                 if col != 'time' and col != 'spread' and col != 'timeframe':
                     df[col] = df[col].astype(float)
             
-            # Normalize OHLC price data
-            min_open = df['open'].min()
-            max_open = df['open'].max()
-            df['open'] = ((df['open'] - min_open) / (max_open - min_open)).round(6)
+            # Find global min and max across all price columns for unified normalization
+            price_columns = ['open', 'high', 'low', 'close']
+            min_price = df[price_columns].min().min()  # Global min across all price columns
+            max_price = df[price_columns].max().max()  # Global max across all price columns
+            price_range = max_price - min_price
             
-            min_high = df['high'].min()
-            max_high = df['high'].max()
-            df['high'] = ((df['high'] - min_high) / (max_high - min_high)).round(6)
-            
-            min_low = df['low'].min()
-            max_low = df['low'].max()
-            df['low'] = ((df['low'] - min_low) / (max_low - min_low)).round(6)
-            
-            min_close = df['close'].min()
-            max_close = df['close'].max()
-            df['close'] = ((df['close'] - min_close) / (max_close - min_close)).round(6)
+            # Normalize all price columns using the same min/max to preserve relationships
+            for col in price_columns:
+                df[col] = ((df[col] - min_price) / price_range).round(6)
             
             # Volume often needs special handling due to its distribution
             if 'volume' in df.columns:
@@ -89,13 +82,33 @@ def normalize_data(timeframes_data, timeframe_map):
                 'ichimoku_tenkan', 'ichimoku_kijun', 'ichimoku_senkou_a', 'ichimoku_senkou_b'  # Ichimoku
             ]
             
-            # Normalize technical indicators (if they exist)
-            for indicator in indicator_columns:
-                if indicator in df.columns:
-                    min_val = df[indicator].min()
-                    max_val = df[indicator].max()
-                    if max_val > min_val:  # Prevent division by zero
-                        df[indicator] = ((df[indicator] - min_val) / (max_val - min_val)).round(6)
+            # Group similar indicators for consistent normalization
+            indicator_groups = {
+                'moving_averages': ['ma20', 'ma50', 'ma100'],
+                'bollinger': ['bb_upper', 'bb_middle', 'bb_lower'],
+                'stochastic': ['stoch_k', 'stoch_d'],
+                'macd': ['macd_main', 'macd_signal', 'macd_hist'],
+                'directional': ['adx', 'plus_di', 'minus_di'],
+                'ichimoku': ['ichimoku_tenkan', 'ichimoku_kijun', 'ichimoku_senkou_a', 'ichimoku_senkou_b']
+            }
+            
+            # Normalize technical indicators by groups
+            for group_name, indicators in indicator_groups.items():
+                # Filter to only include indicators that exist in the dataframe
+                existing_indicators = [ind for ind in indicators if ind in df.columns]
+                
+                if existing_indicators:
+                    # Find min and max across all indicators in this group
+                    group_min = df[existing_indicators].min().min()
+                    group_max = df[existing_indicators].max().max()
+                    
+                    if group_max > group_min:  # Prevent division by zero
+                        for indicator in existing_indicators:
+                            df[indicator] = ((df[indicator] - group_min) / (group_max - group_min)).round(6)
+            
+            # Handle RSI separately as it already has a natural 0-100 range
+            if 'rsi' in df.columns:
+                df['rsi'] = (df['rsi'] / 100.0).round(6)
             
             # Drop the original time column and spread column
             df = df.drop(['time', 'spread'], axis=1)

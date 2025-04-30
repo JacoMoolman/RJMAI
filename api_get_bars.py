@@ -7,6 +7,7 @@ import random
 import math
 import numpy as np
 import os
+import random
 import logging
 from datetime import datetime
 from jmaitoolbox import normalize_data, cluster_price_levels_with_strength
@@ -22,7 +23,7 @@ last_trade_action = None
 trade_count = 0
 
 # Configuration
-EXPORT_TO_CSV = True  # Set to False to disable CSV exports
+EXPORT_TO_CSV = False  # Set to False to disable CSV exports
 CSV_OUTPUT_DIR = "data_exports"  # Directory to store CSV files
 
 # Default lot size
@@ -83,14 +84,32 @@ def identify_price_levels(timeframes_data, normalized_df=None):
     # Get normalization values - if we have a normalized dataframe, use its min/max
     if normalized_df is not None and 'close' in normalized_df.columns:
         # Extract the original min/max price that would have been used to normalize the dataframe
-        # Reverse-engineer the normalization by finding min/max actual prices from bars data
-        all_actual_prices = []
+        # Get ALL price data (OHLC) to find the global min/max, not just close prices
+        all_open_prices = []
+        all_high_prices = []
+        all_low_prices = []
+        all_close_prices = []
+        
         for timeframe, bars in timeframes_data.items():
             for bar in bars:
-                all_actual_prices.append(float(bar['close']))
-                
-        min_price = min(all_actual_prices)
-        max_price = max(all_actual_prices)
+                all_open_prices.append(float(bar['open']))
+                all_high_prices.append(float(bar['high']))
+                all_low_prices.append(float(bar['low']))
+                all_close_prices.append(float(bar['close']))
+        
+        # Find global min/max across all price columns
+        min_price = min(
+            min(all_open_prices),
+            min(all_high_prices),
+            min(all_low_prices),
+            min(all_close_prices)
+        )
+        max_price = max(
+            max(all_open_prices),
+            max(all_high_prices),
+            max(all_low_prices),
+            max(all_close_prices)
+        )
     else:
         # Fallback to using our own min/max
         min_price = min(all_prices)
@@ -145,8 +164,8 @@ def calculate_sl_tp(normalized_df, action, current_price, ai_normalized_sl, ai_n
         tuple: (normalized_sl, normalized_tp, actual_sl, actual_tp)
     """
     # These normalized values (0-1) are what the AI would select
-    normalized_sl = ai_normalized_sl
-    normalized_tp = ai_normalized_tp
+    normalized_sl = round(ai_normalized_sl, 6)  # Ensure 6 decimal places
+    normalized_tp = round(ai_normalized_tp, 6)  # Ensure 6 decimal places
     
     # Convert normalized SL/TP back to actual price values
     # First, find the actual price range in the current symbol
@@ -170,7 +189,7 @@ def calculate_sl_tp(normalized_df, action, current_price, ai_normalized_sl, ai_n
         actual_sl = current_price + (normalized_sl * actual_range / 10)
         actual_tp = current_price - (normalized_tp * actual_range / 10)
     
-    # Format to 5 digits after decimal
+    # Format to 5 digits after decimal for actual SL/TP
     actual_sl = round(actual_sl, 5)
     actual_tp = round(actual_tp, 5)
     
@@ -363,10 +382,13 @@ def test_endpoint():
                     # Get frequency-based price levels from raw data
                     price_levels_df = identify_price_levels(timeframes_data, normalized_df)
                     
+                    # Drop price_level and frequency columns
+                    price_levels_df = price_levels_df.drop(['price_level', 'frequency'], axis=1)
+                    
                     # Display price levels
                     print("\n----- PRICE LEVELS BASED ON FREQUENCY -----")
                     print(f"Shape: {price_levels_df.shape}")
-                    print("Columns: price_level, normalized_price, frequency, strength")
+                    print("Columns: normalized_price, strength")
                     print("\nPrice Levels:")
                     print(price_levels_df)
                     print("\n------------------------------")
@@ -376,7 +398,7 @@ def test_endpoint():
                     
                     # Finally, determine trading instruction
                     # This is a simplified placeholder - replace with your actual logic
-                    import random
+
                     # For demonstration, randomly choose an instruction
                     choices = ["BUY", "SELL", "HOLD"]
                     weights = [0.4, 0.4, 0.2]  # 40% buy, 40% sell, 20% hold
@@ -391,8 +413,8 @@ def test_endpoint():
                         # Here an AI would generate normalized SL/TP values between
                         # 0 and 1 directly based on the normalized data
                         # For now, using placeholder values that will be replaced by AI
-                        ai_normalized_sl = 0.9  # This would come from the AI
-                        ai_normalized_tp = 0.1  # This would come from the AI
+                        ai_normalized_sl = 0.090000  # This would come from the AI (6 decimal places)
+                        ai_normalized_tp = 0.010000  # This would come from the AI (6 decimal places)
                         
                         # Calculate SL/TP values
                         norm_sl, norm_tp, actual_sl, actual_tp = calculate_sl_tp(
@@ -405,7 +427,7 @@ def test_endpoint():
                         # Format: "BUY:0.01:1.25648:1.35792" (Action:Lots:SL:TP)
                         sl_tp_part = f":{DEFAULT_LOT_SIZE}:{actual_sl:.5f}:{actual_tp:.5f}"
                         
-                        print(f"Normalized SL: {norm_sl:.5f}, Normalized TP: {norm_tp:.5f}")
+                        print(f"Normalized SL: {norm_sl:.6f}, Normalized TP: {norm_tp:.6f}")
                         print(f"Actual SL: {actual_sl:.5f}, Actual TP: {actual_tp:.5f}")
                     
                     # Complete instruction with SL/TP if applicable
