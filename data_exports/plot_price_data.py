@@ -63,9 +63,37 @@ try:
             plt.plot(timeframe_close, color='blue', label=f'Close Price (Timeframe {timeframe})')
             
             # Add price levels as horizontal lines
-            for price in normalized_prices:
-                plt.axhline(y=price, color='red', linestyle='-', alpha=0.5)
-            plt.plot([], [], color='red', label='Normalized Price Levels')  # For legend
+            if 'timeframe' in price_levels.columns:
+                # Define color mapping for timeframes
+                timeframe_colors = {
+                    'M1': 'red',
+                    'M5': 'orange', 
+                    'M15': 'yellow',
+                    'M30': 'green',
+                    'H1': 'cyan',
+                    'H4': 'blue',
+                    'D1': 'purple',
+                    'W1': 'magenta'
+                }
+                
+                # Add ALL price levels, color-coded by timeframe
+                for tf in price_levels['timeframe'].unique():
+                    color = timeframe_colors.get(tf, 'gray')
+                    tf_price_levels = price_levels[price_levels['timeframe'] == tf]
+                    for _, row in tf_price_levels.iterrows():
+                        plt.axhline(y=row['normalized_price'], color=color, linestyle='-', alpha=0.3)
+                        # Add text label for price levels of current timeframe (to avoid overcrowding)
+                        if tf == timeframe:
+                            plt.text(len(timeframe_close)*0.99, row['normalized_price'], 
+                                    f" {row['price_level']} (f:{row['frequency']})", 
+                                    verticalalignment='center', fontsize=8)
+                    # Add legend entry for this timeframe's price levels
+                    plt.plot([], [], color=color, label=f'{tf} Price Levels')
+            else:
+                # Fallback to old behavior if timeframe column doesn't exist
+                for price in normalized_prices:
+                    plt.axhline(y=price, color='red', linestyle='-', alpha=0.5)
+                plt.plot([], [], color='red', label='Normalized Price Levels')  # For legend
             
             plt.title(f'GBPUSD Close Price (Timeframe {timeframe}) and Normalized Price Levels')
             plt.xlabel('Data Points')
@@ -82,9 +110,31 @@ try:
             plt.plot(range(len(timeframe_close)), timeframe_close, label=f'Timeframe {timeframe}')
         
         # Add price levels as horizontal lines in the combined plot
-        for price in normalized_prices:
-            plt.axhline(y=price, color='red', linestyle='-', alpha=0.5)
-        plt.plot([], [], color='red', label='Normalized Price Levels')  # For legend
+        if 'timeframe' in price_levels.columns:
+            # Use different colors for price levels from different timeframes
+            timeframe_colors = {
+                'M1': 'red',
+                'M5': 'orange', 
+                'M15': 'yellow',
+                'M30': 'green',
+                'H1': 'cyan',
+                'H4': 'blue',
+                'D1': 'purple',
+                'W1': 'magenta'
+            }
+            
+            # Add a legend entry for each timeframe's price levels
+            for tf in price_levels['timeframe'].unique():
+                color = timeframe_colors.get(tf, 'gray')
+                tf_price_levels = price_levels[price_levels['timeframe'] == tf]
+                for _, row in tf_price_levels.iterrows():
+                    plt.axhline(y=row['normalized_price'], color=color, linestyle='-', alpha=0.3)
+                plt.plot([], [], color=color, label=f'{tf} Price Levels')
+        else:
+            # Fallback to old behavior
+            for price in normalized_prices:
+                plt.axhline(y=price, color='red', linestyle='-', alpha=0.5)
+            plt.plot([], [], color='red', label='Normalized Price Levels')  # For legend
         
         plt.title('GBPUSD Close Price Comparison Across All Timeframes with Price Levels')
         plt.xlabel('Data Points')
@@ -107,9 +157,35 @@ try:
         # If normalized_prices is a list of values without a time component, 
         # we'll plot them as horizontal lines across the graph
         if len(normalized_prices) < len(close_prices):
-            for price in normalized_prices:
-                plt.axhline(y=price, color='red', linestyle='-', alpha=0.5)
-            plt.plot([], [], color='red', label='Normalized Price Levels')  # For legend
+            if 'timeframe' in price_levels.columns:
+                # Use different colors for price levels from different timeframes
+                timeframe_colors = {
+                    'M1': 'red',
+                    'M5': 'orange', 
+                    'M15': 'yellow',
+                    'M30': 'green',
+                    'H1': 'cyan',
+                    'H4': 'blue',
+                    'D1': 'purple',
+                    'W1': 'magenta'
+                }
+                
+                # Add a legend entry for each timeframe's price levels
+                for tf in price_levels['timeframe'].unique():
+                    color = timeframe_colors.get(tf, 'gray')
+                    tf_price_levels = price_levels[price_levels['timeframe'] == tf]
+                    for _, row in tf_price_levels.iterrows():
+                        plt.axhline(y=row['normalized_price'], color=color, linestyle='-', alpha=0.3)
+                        # Add text label showing the actual price value and frequency
+                        plt.text(len(close_prices)*0.99, row['normalized_price'], 
+                                 f" {row['price_level']} ({tf}, f:{row['frequency']})", 
+                                 verticalalignment='center', fontsize=8)
+                    plt.plot([], [], color=color, label=f'{tf} Price Levels')
+            else:
+                # Old behavior
+                for price in normalized_prices:
+                    plt.axhline(y=price, color='red', linestyle='-', alpha=0.5)
+                plt.plot([], [], color='red', label='Normalized Price Levels')  # For legend
         else:
             # If both datasets have the same length, plot them together
             plt.plot(normalized_prices, color='red', label='Normalized Price')

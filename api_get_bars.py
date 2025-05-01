@@ -64,90 +64,111 @@ MAX_SR_LEVELS = 20  # Maximum number of support/resistance levels to track
 
 def identify_price_levels(timeframes_data, normalized_df=None):
     """
-    Identify important price levels based on frequency of occurrence in the original data.
+    Identify important price levels based on frequency of occurrence per timeframe.
     
     Args:
         timeframes_data: Raw price data from all timeframes
         normalized_df: The normalized dataframe to match normalization with
         
     Returns:
-        DataFrame: DataFrame containing the most frequently occurring price levels
+        DataFrame: DataFrame containing the most frequently occurring price levels per timeframe
     """
-    # Extract close prices from all timeframes
-    all_prices = []
+    # Get normalization values - if we have a normalized dataframe, use its min/max
+    all_open_prices = []
+    all_high_prices = []
+    all_low_prices = []
+    all_close_prices = []
     
-    # Collect all close prices from all timeframes
     for timeframe, bars in timeframes_data.items():
         for bar in bars:
-            all_prices.append(float(bar['close']))
+            all_open_prices.append(float(bar['open']))
+            all_high_prices.append(float(bar['high']))
+            all_low_prices.append(float(bar['low']))
+            all_close_prices.append(float(bar['close']))
     
-    # Get normalization values - if we have a normalized dataframe, use its min/max
-    if normalized_df is not None and 'close' in normalized_df.columns:
-        # Extract the original min/max price that would have been used to normalize the dataframe
-        # Get ALL price data (OHLC) to find the global min/max, not just close prices
-        all_open_prices = []
-        all_high_prices = []
-        all_low_prices = []
-        all_close_prices = []
-        
-        for timeframe, bars in timeframes_data.items():
-            for bar in bars:
-                all_open_prices.append(float(bar['open']))
-                all_high_prices.append(float(bar['high']))
-                all_low_prices.append(float(bar['low']))
-                all_close_prices.append(float(bar['close']))
-        
-        # Find global min/max across all price columns
-        min_price = min(
-            min(all_open_prices),
-            min(all_high_prices),
-            min(all_low_prices),
-            min(all_close_prices)
-        )
-        max_price = max(
-            max(all_open_prices),
-            max(all_high_prices),
-            max(all_low_prices),
-            max(all_close_prices)
-        )
-    else:
-        # Fallback to using our own min/max
-        min_price = min(all_prices)
-        max_price = max(all_prices)
+    # Find global min/max across all price columns
+    min_price = min(
+        min(all_open_prices),
+        min(all_high_prices),
+        min(all_low_prices),
+        min(all_close_prices)
+    )
+    max_price = max(
+        max(all_open_prices),
+        max(all_high_prices),
+        max(all_low_prices),
+        max(all_close_prices)
+    )
     
     price_range = max_price - min_price
     
     # Round prices to handle very close values
     precision = 5  # Adjust based on your instrument's typical precision
-    all_prices_rounded = [round(price, precision) for price in all_prices]
     
-    # Count frequency of each price level
+    # First, gather all price levels and their count across ALL timeframes
     from collections import Counter
-    price_counts = Counter(all_prices_rounded)
+    all_prices_counter = Counter()
     
-    # Convert to DataFrame
-    price_levels = pd.DataFrame({
-        'price_level': list(price_counts.keys()),
-        'frequency': list(price_counts.values())
-    })
+    for timeframe, bars in timeframes_data.items():
+        timeframe_prices = [round(float(bar['close']), precision) for bar in bars]
+        # Update the global counter with this timeframe's prices
+        all_prices_counter.update(timeframe_prices)
     
-    # Sort by frequency (highest first)
-    price_levels = price_levels.sort_values('frequency', ascending=False)
+    # Create a DataFrame to store all timeframe price levels
+    all_timeframe_levels = pd.DataFrame()
     
-    # Take top MAX_SR_LEVELS prices
-    price_levels = price_levels.head(MAX_SR_LEVELS).reset_index(drop=True)
-    
-    # Calculate normalized frequency
-    max_freq = price_levels['frequency'].max()
-    price_levels['strength'] = (price_levels['frequency'] / max_freq).round(6)
-    
-    # Add normalized price values using EXACTLY the same min/max as the main dataframe
-    price_levels['normalized_price'] = ((price_levels['price_level'] - min_price) / price_range).round(6)
+    # Process each timeframe separately
+    for timeframe, bars in timeframes_data.items():
+        # Extract close prices from this timeframe
+        timeframe_prices = [round(float(bar['close']), precision) for bar in bars]
+        
+        # Create a set of unique prices in this timeframe
+        unique_timeframe_prices = set(timeframe_prices)
+        
+        # Create a dataframe of price levels for this timeframe
+        price_data = []
+        for price in unique_timeframe_prices:
+            # Get the global frequency (from all timeframes)
+            global_frequency = all_prices_counter[price]
+            price_data.append({
+                'price_level': price,
+                'frequency': global_frequency
+            })
+        
+        # Convert to DataFrame
+        price_levels = pd.DataFrame(price_data)
+        
+        # If no prices found for this timeframe, continue to next timeframe
+        if price_levels.empty:
+            continue
+            
+        # Sort by frequency (highest first)
+        price_levels = price_levels.sort_values('frequency', ascending=False)
+        
+        # Take top 10 prices
+        levels_per_timeframe = 10
+        price_levels = price_levels.head(levels_per_timeframe).reset_index(drop=True)
+        
+        # Calculate normalized frequency
+        max_freq = price_levels['frequency'].max() if not price_levels.empty else 1
+        price_levels['strength'] = (price_levels['frequency'] / max_freq).round(6)
+        
+        # Add normalized price values using EXACTLY the same min/max as the main dataframe
+        price_levels['normalized_price'] = ((price_levels['price_level'] - min_price) / price_range).round(6)
+        
+        # Add timeframe column
+        price_levels['timeframe'] = timeframe
+        
+        # Append to the all timeframes DataFrame
+        all_timeframe_levels = pd.concat([all_timeframe_levels, price_levels])
     
     # Reorder columns for better readability
-    price_levels = price_levels[['price_level', 'normalized_price', 'frequency', 'strength']]
+    all_timeframe_levels = all_timeframe_levels[['timeframe', 'price_level', 'normalized_price', 'frequency', 'strength']]
     
-    return price_levels
+    # Reset index to have a continuous index across all timeframes
+    all_timeframe_levels = all_timeframe_levels.reset_index(drop=True)
+    
+    return all_timeframe_levels
 
 def calculate_sl_tp(normalized_df, action, current_price, ai_normalized_sl, ai_normalized_tp):
     """
@@ -382,18 +403,16 @@ def test_endpoint():
                     # Get frequency-based price levels from raw data
                     price_levels_df = identify_price_levels(timeframes_data, normalized_df)
                     
-                    # Drop price_level and frequency columns
-                    price_levels_df = price_levels_df.drop(['price_level', 'frequency'], axis=1)
-                    
                     # Display price levels
                     print("\n----- PRICE LEVELS BASED ON FREQUENCY -----")
                     print(f"Shape: {price_levels_df.shape}")
-                    print("Columns: normalized_price, strength")
+                    print("Columns: timeframe, price_level, normalized_price, frequency, strength")
                     print("\nPrice Levels:")
                     print(price_levels_df)
                     print("\n------------------------------")
                     
                     # Export price levels to CSV
+                    price_levels_df = price_levels_df[['timeframe', 'price_level', 'normalized_price', 'frequency', 'strength']]
                     export_df_to_csv(price_levels_df, "price_levels", symbol)
                     
                     # Finally, determine trading instruction
