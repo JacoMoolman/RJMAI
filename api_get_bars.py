@@ -23,7 +23,7 @@ last_trade_action = None
 trade_count = 0
 
 # Configuration
-EXPORT_TO_CSV = False  # Set to False to disable CSV exports
+EXPORT_TO_CSV = True  # Set to False to disable CSV exports
 CSV_OUTPUT_DIR = "data_exports"  # Directory to store CSV files
 
 # Default lot size
@@ -410,11 +410,14 @@ def test_endpoint():
                         # Get the current price for the symbol
                         current_price = float(timeframes_data[timeframe_keys[0]][0]['close'])  # Use the most recent close price from the first timeframe
                         
-                        # Here an AI would generate normalized SL/TP values between
-                        # 0 and 1 directly based on the normalized data
-                        # For now, using placeholder values that will be replaced by AI
-                        ai_normalized_sl = 0.090000  # This would come from the AI (6 decimal places)
-                        ai_normalized_tp = 0.010000  # This would come from the AI (6 decimal places)
+                        # Define percentage-based SL/TP values (these will be replaced by AI in future)
+                        sl_percent = 2.0  
+                        tp_percent = 2.0 
+                        
+                        # Convert percentage to normalized values (0-1 range with 6 decimal places)
+                        # The division by 100 converts percentage to decimal, then scale as needed
+                        ai_normalized_sl = round(sl_percent / 100, 6)
+                        ai_normalized_tp = round(tp_percent / 100, 6)
                         
                         # Calculate SL/TP values
                         norm_sl, norm_tp, actual_sl, actual_tp = calculate_sl_tp(
@@ -427,8 +430,10 @@ def test_endpoint():
                         # Format: "BUY:0.01:1.25648:1.35792" (Action:Lots:SL:TP)
                         sl_tp_part = f":{DEFAULT_LOT_SIZE}:{actual_sl:.5f}:{actual_tp:.5f}"
                         
-                        print(f"Normalized SL: {norm_sl:.6f}, Normalized TP: {norm_tp:.6f}")
-                        print(f"Actual SL: {actual_sl:.5f}, Actual TP: {actual_tp:.5f}")
+                        print(f"Normalized SL: {norm_sl:.6f}")
+                        print(f"Normalized TP: {norm_tp:.6f}")
+                        print(f"Actual SL: {actual_sl:.5f}")
+                        print(f"Actual TP: {actual_tp:.5f}")
                     
                     # Complete instruction with SL/TP if applicable
                     final_instruction = instruction + (sl_tp_part if instruction in ["BUY", "SELL"] else "")

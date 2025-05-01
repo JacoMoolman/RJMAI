@@ -44,35 +44,84 @@ try:
         else:
             raise ValueError("Could not find 'normalized_price' column in the price levels data")
     
-    # Create the plot
-    plt.figure(figsize=(12, 6))
-    
-    # Plot close prices from normalized data
-    plt.plot(close_prices, color='blue', label='Close Price')
-    
-    # If normalized_prices is a list of values without a time component, 
-    # we'll plot them as horizontal lines across the graph
-    if len(normalized_prices) < len(close_prices):
+    # Check if timeframe column exists
+    if 'timeframe' in normalized_data.columns:
+        # Identify unique timeframes
+        unique_timeframes = normalized_data['timeframe'].unique()
+        print(f"Found {len(unique_timeframes)} unique timeframes: {unique_timeframes}")
+        
+        # Create separate plots for each timeframe
+        for timeframe in unique_timeframes:
+            # Filter data for the current timeframe
+            timeframe_data = normalized_data[normalized_data['timeframe'] == timeframe]
+            timeframe_close = timeframe_data['close']
+            
+            # Create the plot
+            plt.figure(figsize=(12, 6))
+            
+            # Plot close prices for this timeframe
+            plt.plot(timeframe_close, color='blue', label=f'Close Price (Timeframe {timeframe})')
+            
+            # Add price levels as horizontal lines
+            for price in normalized_prices:
+                plt.axhline(y=price, color='red', linestyle='-', alpha=0.5)
+            plt.plot([], [], color='red', label='Normalized Price Levels')  # For legend
+            
+            plt.title(f'GBPUSD Close Price (Timeframe {timeframe}) and Normalized Price Levels')
+            plt.xlabel('Data Points')
+            plt.ylabel('Price')
+            plt.legend()
+            plt.grid(True)
+        
+        # Also create a combined plot with all timeframes
+        plt.figure(figsize=(14, 8))
+        
+        for timeframe in unique_timeframes:
+            timeframe_data = normalized_data[normalized_data['timeframe'] == timeframe]
+            timeframe_close = timeframe_data['close']
+            plt.plot(range(len(timeframe_close)), timeframe_close, label=f'Timeframe {timeframe}')
+        
+        # Add price levels as horizontal lines in the combined plot
         for price in normalized_prices:
             plt.axhline(y=price, color='red', linestyle='-', alpha=0.5)
         plt.plot([], [], color='red', label='Normalized Price Levels')  # For legend
+        
+        plt.title('GBPUSD Close Price Comparison Across All Timeframes with Price Levels')
+        plt.xlabel('Data Points')
+        plt.ylabel('Price')
+        plt.legend()
+        plt.grid(True)
+        
+        # Show the plots
+        plt.show()
+        
     else:
-        # If both datasets have the same length, plot them together
-        plt.plot(normalized_prices, color='red', label='Normalized Price')
-    
-    plt.title('GBPUSD Close Price and Normalized Price Levels')
-    plt.xlabel('Data Points')
-    plt.ylabel('Price')
-    plt.legend()
-    plt.grid(True)
-    
-    # Save the plot to a file
-    output_path = os.path.join(current_dir, 'GBPUSD_price_comparison.png')
-    plt.savefig(output_path)
-    print(f"Plot saved to {output_path}")
-    
-    # Show the plot
-    plt.show()
+        print("Warning: 'timeframe' column not found in normalized data. Creating a single plot instead.")
+        
+        # Create a single plot (original functionality)
+        plt.figure(figsize=(12, 6))
+        
+        # Plot close prices from normalized data
+        plt.plot(close_prices, color='blue', label='Close Price')
+        
+        # If normalized_prices is a list of values without a time component, 
+        # we'll plot them as horizontal lines across the graph
+        if len(normalized_prices) < len(close_prices):
+            for price in normalized_prices:
+                plt.axhline(y=price, color='red', linestyle='-', alpha=0.5)
+            plt.plot([], [], color='red', label='Normalized Price Levels')  # For legend
+        else:
+            # If both datasets have the same length, plot them together
+            plt.plot(normalized_prices, color='red', label='Normalized Price')
+        
+        plt.title('GBPUSD Close Price and Normalized Price Levels')
+        plt.xlabel('Data Points')
+        plt.ylabel('Price')
+        plt.legend()
+        plt.grid(True)
+        
+        # Show the plot
+        plt.show()
     
 except Exception as e:
     print(f"Error: {e}")
