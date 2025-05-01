@@ -10,7 +10,7 @@ import os
 import random
 import logging
 from datetime import datetime
-from jmaitoolbox import normalize_data, cluster_price_levels_with_strength
+from jmaitoolbox import normalize_data, cluster_price_levels_with_strength, export_df_to_csv, identify_price_levels, calculate_sl_tp, add_difference_columns
 
 # Disable Flask logging
 log = logging.getLogger('werkzeug')
@@ -23,7 +23,7 @@ last_trade_action = None
 trade_count = 0
 
 # Configuration
-EXPORT_TO_CSV = True  # Set to False to disable CSV exports
+EXPORT_TO_CSV = False  # Set to False to disable CSV exports
 CSV_OUTPUT_DIR = "data_exports"  # Directory to store CSV files
 
 # Default lot size
@@ -33,188 +33,11 @@ DEFAULT_LOT_SIZE = 0.01
 if EXPORT_TO_CSV and not os.path.exists(CSV_OUTPUT_DIR):
     os.makedirs(CSV_OUTPUT_DIR)
 
-# Function to export DataFrame to CSV
-def export_df_to_csv(df, stage_name, symbol="UNKNOWN"):
-    """
-    Export a DataFrame to CSV file
-    
-    Args:
-        df: DataFrame to export
-        stage_name: Name of the processing stage (for filename)
-        symbol: Trading symbol
-    """
-    if not EXPORT_TO_CSV:
-        return
-        
-    # Use a single file per stage that gets overwritten
-    filename = f"{CSV_OUTPUT_DIR}/{symbol}_{stage_name}.csv"
-    
-    # Ensure directory exists
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
-    
-    # Export to CSV, overwriting previous file
-    df.to_csv(filename, index=True)
-    print(f"Exported {stage_name} DataFrame to {filename}")
-
 app = Flask(__name__)
 
 # Global configuration variables
 cache = {}
 MAX_SR_LEVELS = 20  # Maximum number of support/resistance levels to track
-
-def identify_price_levels(timeframes_data, normalized_df=None):
-    """
-    Identify important price levels based on frequency of occurrence per timeframe.
-    
-    Args:
-        timeframes_data: Raw price data from all timeframes
-        normalized_df: The normalized dataframe to match normalization with
-        
-    Returns:
-        DataFrame: DataFrame containing the most frequently occurring price levels per timeframe
-    """
-    # Get normalization values - if we have a normalized dataframe, use its min/max
-    all_open_prices = []
-    all_high_prices = []
-    all_low_prices = []
-    all_close_prices = []
-    
-    for timeframe, bars in timeframes_data.items():
-        for bar in bars:
-            all_open_prices.append(float(bar['open']))
-            all_high_prices.append(float(bar['high']))
-            all_low_prices.append(float(bar['low']))
-            all_close_prices.append(float(bar['close']))
-    
-    # Find global min/max across all price columns
-    min_price = min(
-        min(all_open_prices),
-        min(all_high_prices),
-        min(all_low_prices),
-        min(all_close_prices)
-    )
-    max_price = max(
-        max(all_open_prices),
-        max(all_high_prices),
-        max(all_low_prices),
-        max(all_close_prices)
-    )
-    
-    price_range = max_price - min_price
-    
-    # Round prices to handle very close values
-    precision = 5  # Adjust based on your instrument's typical precision
-    
-    # First, gather all price levels and their count across ALL timeframes
-    from collections import Counter
-    all_prices_counter = Counter()
-    
-    for timeframe, bars in timeframes_data.items():
-        timeframe_prices = [round(float(bar['close']), precision) for bar in bars]
-        # Update the global counter with this timeframe's prices
-        all_prices_counter.update(timeframe_prices)
-    
-    # Create a DataFrame to store all timeframe price levels
-    all_timeframe_levels = pd.DataFrame()
-    
-    # Process each timeframe separately
-    for timeframe, bars in timeframes_data.items():
-        # Extract close prices from this timeframe
-        timeframe_prices = [round(float(bar['close']), precision) for bar in bars]
-        
-        # Create a set of unique prices in this timeframe
-        unique_timeframe_prices = set(timeframe_prices)
-        
-        # Create a dataframe of price levels for this timeframe
-        price_data = []
-        for price in unique_timeframe_prices:
-            # Get the global frequency (from all timeframes)
-            global_frequency = all_prices_counter[price]
-            price_data.append({
-                'price_level': price,
-                'frequency': global_frequency
-            })
-        
-        # Convert to DataFrame
-        price_levels = pd.DataFrame(price_data)
-        
-        # If no prices found for this timeframe, continue to next timeframe
-        if price_levels.empty:
-            continue
-            
-        # Sort by frequency (highest first)
-        price_levels = price_levels.sort_values('frequency', ascending=False)
-        
-        # Take top 10 prices
-        levels_per_timeframe = 10
-        price_levels = price_levels.head(levels_per_timeframe).reset_index(drop=True)
-        
-        # Calculate normalized frequency
-        max_freq = price_levels['frequency'].max() if not price_levels.empty else 1
-        price_levels['strength'] = (price_levels['frequency'] / max_freq).round(6)
-        
-        # Add normalized price values using EXACTLY the same min/max as the main dataframe
-        price_levels['normalized_price'] = ((price_levels['price_level'] - min_price) / price_range).round(6)
-        
-        # Add timeframe column
-        price_levels['timeframe'] = timeframe
-        
-        # Append to the all timeframes DataFrame
-        all_timeframe_levels = pd.concat([all_timeframe_levels, price_levels])
-    
-    # Reorder columns for better readability
-    all_timeframe_levels = all_timeframe_levels[['timeframe', 'price_level', 'normalized_price', 'frequency', 'strength']]
-    
-    # Reset index to have a continuous index across all timeframes
-    all_timeframe_levels = all_timeframe_levels.reset_index(drop=True)
-    
-    return all_timeframe_levels
-
-def calculate_sl_tp(normalized_df, action, current_price, ai_normalized_sl, ai_normalized_tp):
-    """
-    Calculate Stop Loss and Take Profit values based on normalized data.
-    
-    Args:
-        normalized_df: DataFrame with normalized market data
-        action: Trading action ('BUY' or 'SELL')
-        current_price: Current market price
-        ai_normalized_sl: AI-selected normalized SL value (0-1 range)
-        ai_normalized_tp: AI-selected normalized TP value (0-1 range)
-        
-    Returns:
-        tuple: (normalized_sl, normalized_tp, actual_sl, actual_tp)
-    """
-    # These normalized values (0-1) are what the AI would select
-    normalized_sl = round(ai_normalized_sl, 6)  # Ensure 6 decimal places
-    normalized_tp = round(ai_normalized_tp, 6)  # Ensure 6 decimal places
-    
-    # Convert normalized SL/TP back to actual price values
-    # First, find the actual price range in the current symbol
-    price_data = normalized_df[['timeframe', 'open', 'high', 'low', 'close']]
-    actual_min = float('inf')
-    actual_max = float('-inf')
-    
-    # Find the original price range before normalization
-    for timeframe_group in price_data.groupby('timeframe'):
-        tf_data = timeframe_group[1]
-        actual_min = min(actual_min, tf_data['low'].min())
-        actual_max = max(actual_max, tf_data['high'].max())
-    
-    actual_range = actual_max - actual_min
-    
-    # Convert to actual price values based on the action
-    if action == "BUY":
-        actual_sl = current_price - (normalized_sl * actual_range / 10)
-        actual_tp = current_price + (normalized_tp * actual_range / 10)
-    else:  # SELL
-        actual_sl = current_price + (normalized_sl * actual_range / 10)
-        actual_tp = current_price - (normalized_tp * actual_range / 10)
-    
-    # Format to 5 digits after decimal for actual SL/TP
-    actual_sl = round(actual_sl, 5)
-    actual_tp = round(actual_tp, 5)
-    
-    return normalized_sl, normalized_tp, actual_sl, actual_tp
 
 @app.route('/test', methods=['POST'])
 def test_endpoint():
@@ -299,93 +122,8 @@ def test_endpoint():
                     # Concatenate all dataframes into a single dataframe
                     normalized_df = pd.concat(dfs_list, ignore_index=True)
                     
-                    # --- ADD DIFFERENCE COLUMNS ---
-                    # Calculate differences between OHLC values - use absolute values to avoid negatives
-                    normalized_df['diff_open_high'] = np.abs(normalized_df['open'] - normalized_df['high']).round(6)
-                    normalized_df['diff_open_low'] = np.abs(normalized_df['open'] - normalized_df['low']).round(6)
-                    normalized_df['diff_open_close'] = np.abs(normalized_df['open'] - normalized_df['close']).round(6)
-
-                    normalized_df['diff_high_open'] = np.abs(normalized_df['high'] - normalized_df['open']).round(6)
-                    normalized_df['diff_high_low'] = np.abs(normalized_df['high'] - normalized_df['low']).round(6)
-                    normalized_df['diff_high_close'] = np.abs(normalized_df['high'] - normalized_df['close']).round(6)
-
-                    normalized_df['diff_low_open'] = np.abs(normalized_df['low'] - normalized_df['open']).round(6)
-                    normalized_df['diff_low_high'] = np.abs(normalized_df['low'] - normalized_df['high']).round(6)
-                    normalized_df['diff_low_close'] = np.abs(normalized_df['low'] - normalized_df['close']).round(6)
-
-                    normalized_df['diff_close_open'] = np.abs(normalized_df['close'] - normalized_df['open']).round(6)
-                    normalized_df['diff_close_high'] = np.abs(normalized_df['close'] - normalized_df['high']).round(6)
-                    normalized_df['diff_close_low'] = np.abs(normalized_df['close'] - normalized_df['low']).round(6)
-                    
-                    # Add indicator crossovers and differences (where applicable)
-                    if all(col in normalized_df.columns for col in ['ma20', 'ma50']):
-                        normalized_df['ma20_50_diff'] = (normalized_df['ma20'] - normalized_df['ma50']).round(6)
-                        
-                    if all(col in normalized_df.columns for col in ['ma50', 'ma100']):
-                        normalized_df['ma50_100_diff'] = (normalized_df['ma50'] - normalized_df['ma100']).round(6)
-                        
-                    if all(col in normalized_df.columns for col in ['ma20', 'ma100']):
-                        normalized_df['ma20_100_diff'] = (normalized_df['ma20'] - normalized_df['ma100']).round(6)
-                    
-                    if all(col in normalized_df.columns for col in ['macd_main', 'macd_signal']):
-                        normalized_df['macd_crossover'] = (normalized_df['macd_main'] - normalized_df['macd_signal']).round(6)
-                    
-                    if all(col in normalized_df.columns for col in ['stoch_k', 'stoch_d']):
-                        normalized_df['stoch_crossover'] = (normalized_df['stoch_k'] - normalized_df['stoch_d']).round(6)
-                    
-                    if all(col in normalized_df.columns for col in ['plus_di', 'minus_di']):
-                        normalized_df['di_crossover'] = (normalized_df['plus_di'] - normalized_df['minus_di']).round(6)
-                    
-                    # Bollinger Band position
-                    if all(col in normalized_df.columns for col in ['close', 'bb_upper', 'bb_lower']):
-                        normalized_df['bb_position'] = ((normalized_df['close'] - normalized_df['bb_lower']) / (normalized_df['bb_upper'] - normalized_df['bb_lower'])).round(6)
-                        # Handle division by zero
-                        normalized_df['bb_position'] = normalized_df['bb_position'].fillna(0.5)
-                        # Normalize to 0-1 range
-                        normalized_df['bb_position'] = normalized_df['bb_position'].clip(0, 1)
-                    
-                    # Ichimoku cloud status
-                    if all(col in normalized_df.columns for col in ['close', 'ichimoku_senkou_a', 'ichimoku_senkou_b']):
-                        # Above cloud = 1, Below cloud = 0, In cloud = 0.5
-                        normalized_df['cloud_position'] = ((normalized_df['close'] > normalized_df['ichimoku_senkou_a']) & 
-                                                        (normalized_df['close'] > normalized_df['ichimoku_senkou_b'])).astype(float).round(6)
-                        
-                        in_cloud = ((normalized_df['close'] >= normalized_df['ichimoku_senkou_a']) & 
-                                   (normalized_df['close'] <= normalized_df['ichimoku_senkou_b'])) | \
-                                  ((normalized_df['close'] <= normalized_df['ichimoku_senkou_a']) & 
-                                   (normalized_df['close'] >= normalized_df['ichimoku_senkou_b']))
-                        
-                        normalized_df.loc[in_cloud, 'cloud_position'] = 0.5
-                    
-                    # Normalize crossover signals to 0-1 range
-                    if 'macd_crossover' in normalized_df.columns:
-                        # Scale and shift MACD crossover to 0-1 range
-                        min_macd = normalized_df['macd_crossover'].min()
-                        max_macd = normalized_df['macd_crossover'].max()
-                        if max_macd != min_macd:  # Prevent division by zero
-                            normalized_df['macd_crossover'] = ((normalized_df['macd_crossover'] - min_macd) / (max_macd - min_macd)).round(6)
-                    
-                    if 'stoch_crossover' in normalized_df.columns:
-                        # Scale and shift Stochastic crossover to 0-1 range
-                        min_stoch = normalized_df['stoch_crossover'].min()
-                        max_stoch = normalized_df['stoch_crossover'].max()
-                        if max_stoch != min_stoch:  # Prevent division by zero
-                            normalized_df['stoch_crossover'] = ((normalized_df['stoch_crossover'] - min_stoch) / (max_stoch - min_stoch)).round(6)
-                    
-                    if 'di_crossover' in normalized_df.columns:
-                        # Scale and shift DI crossover to 0-1 range
-                        min_di = normalized_df['di_crossover'].min()
-                        max_di = normalized_df['di_crossover'].max()
-                        if max_di != min_di:  # Prevent division by zero
-                            normalized_df['di_crossover'] = ((normalized_df['di_crossover'] - min_di) / (max_di - min_di)).round(6)
-                    
-                    # Normalize MA difference values to 0-1 range
-                    for ma_diff in ['ma20_50_diff', 'ma50_100_diff', 'ma20_100_diff']:
-                        if ma_diff in normalized_df.columns:
-                            min_val = normalized_df[ma_diff].min()
-                            max_val = normalized_df[ma_diff].max()
-                            if max_val != min_val:  # Prevent division by zero
-                                normalized_df[ma_diff] = ((normalized_df[ma_diff] - min_val) / (max_val - min_val)).round(6)
+                    # Add difference columns
+                    normalized_df = add_difference_columns(normalized_df)
                     
                     # Display complete normalized dataframe information AFTER all processing
                     print("\n----- COMPLETE NORMALIZED DATAFRAME -----")
