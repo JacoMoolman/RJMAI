@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 # Maximum number of support/resistance levels to track
 MAX_SR_LEVELS = 20
@@ -39,9 +40,14 @@ def normalize_data(timeframes_data, timeframe_map):
             df['hour'] = df['time'].dt.hour
             df['minute'] = df['time'].dt.minute
             
-            # Normalize hour and minute between 0 and 1
-            df['hour'] = (df['hour'] / 23.0).round(6)  # Divide by (24-1) to normalize
-            df['minute'] = (df['minute'] / 59.0).round(6)  # Divide by (60-1) to normalize
+            # cyclical features
+            df['hour_sin'] = np.sin(2 * np.pi * df['hour'] / 24).round(6)
+            df['hour_cos'] = np.cos(2 * np.pi * df['hour'] / 24).round(6)
+            df['minute_sin'] = np.sin(2 * np.pi * df['minute'] / 60).round(6)
+            df['minute_cos'] = np.cos(2 * np.pi * df['minute'] / 60).round(6)
+            
+            # Drop the raw hour and minute columns
+            df = df.drop(['hour', 'minute'], axis=1)
             
             # Extract date components (drop year, split month and day)
             df['day'] = df['time'].dt.day
