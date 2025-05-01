@@ -401,18 +401,10 @@ def add_difference_columns(normalized_df):
     normalized_df['diff_open_high'] = np.abs(normalized_df['open'] - normalized_df['high']).round(6)
     normalized_df['diff_open_low'] = np.abs(normalized_df['open'] - normalized_df['low']).round(6)
     normalized_df['diff_open_close'] = np.abs(normalized_df['open'] - normalized_df['close']).round(6)
-
-    normalized_df['diff_high_open'] = np.abs(normalized_df['high'] - normalized_df['open']).round(6)
     normalized_df['diff_high_low'] = np.abs(normalized_df['high'] - normalized_df['low']).round(6)
     normalized_df['diff_high_close'] = np.abs(normalized_df['high'] - normalized_df['close']).round(6)
-
-    normalized_df['diff_low_open'] = np.abs(normalized_df['low'] - normalized_df['open']).round(6)
-    normalized_df['diff_low_high'] = np.abs(normalized_df['low'] - normalized_df['high']).round(6)
     normalized_df['diff_low_close'] = np.abs(normalized_df['low'] - normalized_df['close']).round(6)
 
-    normalized_df['diff_close_open'] = np.abs(normalized_df['close'] - normalized_df['open']).round(6)
-    normalized_df['diff_close_high'] = np.abs(normalized_df['close'] - normalized_df['high']).round(6)
-    normalized_df['diff_close_low'] = np.abs(normalized_df['close'] - normalized_df['low']).round(6)
     
     # Add indicator crossovers and differences (where applicable)
     if all(col in normalized_df.columns for col in ['ma20', 'ma50']):
