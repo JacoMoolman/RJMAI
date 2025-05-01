@@ -85,7 +85,7 @@ def normalize_data(timeframes_data, timeframe_map):
         'ichimoku': ['ichimoku_tenkan', 'ichimoku_kijun', 'ichimoku_senkou_a', 'ichimoku_senkou_b']
     }
     
-    # Create dictionaries to store global min/max for each indicator group
+    # Create dictionaries to store global min/max for each indicator
     global_min_max = {}
     
     # Collect volume data for global normalization
@@ -102,17 +102,18 @@ def normalize_data(timeframes_data, timeframe_map):
             existing_indicators = [ind for ind in indicators if ind in df.columns]
             
             if existing_indicators:
-                if group_name not in global_min_max:
-                    global_min_max[group_name] = {'data': [], 'indicators': existing_indicators}
-                
-                global_min_max[group_name]['data'].append(df[existing_indicators])
+                for indicator in existing_indicators:
+                    if indicator not in global_min_max:
+                        global_min_max[indicator] = {'data': []}
+                    
+                    global_min_max[indicator]['data'].append(df[[indicator]])
     
-    # Calculate global min/max for each indicator group
-    for group_name, group_info in global_min_max.items():
-        if group_info['data']:
-            combined_data = pd.concat(group_info['data'], ignore_index=True)
-            group_info['min'] = combined_data.min().min()
-            group_info['max'] = combined_data.max().max()
+    # Calculate global min/max for each indicator
+    for indicator, indicator_info in global_min_max.items():
+        if indicator_info['data']:
+            combined_data = pd.concat(indicator_info['data'], ignore_index=True)
+            indicator_info['min'] = combined_data[indicator].min()
+            indicator_info['max'] = combined_data[indicator].max()
     
     # Calculate global min/max for volume
     global_min_vol = None
@@ -133,13 +134,11 @@ def normalize_data(timeframes_data, timeframe_map):
         if 'volume' in df.columns and global_min_vol is not None and global_max_vol > global_min_vol:
             df['volume'] = ((df['volume'] - global_min_vol) / (global_max_vol - global_min_vol)).round(6)
         
-        # Normalize technical indicators by groups using global min/max
-        for group_name, group_info in global_min_max.items():
-            existing_indicators = [ind for ind in group_info['indicators'] if ind in df.columns]
-            
-            if existing_indicators and group_info.get('max', 0) > group_info.get('min', 0):
-                for indicator in existing_indicators:
-                    df[indicator] = ((df[indicator] - group_info['min']) / (group_info['max'] - group_info['min'])).round(6)
+        # Normalize technical indicators individually using their own global min/max
+        for indicator, indicator_info in global_min_max.items():
+            if indicator in df.columns and indicator_info.get('max', 0) > indicator_info.get('min', 0):
+                df[indicator] = ((df[indicator] - indicator_info['min']) / 
+                                (indicator_info['max'] - indicator_info['min'])).round(6)
         
         # Handle RSI separately as it already has a natural 0-100 range
         if 'rsi' in df.columns:
