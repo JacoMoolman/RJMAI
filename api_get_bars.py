@@ -24,6 +24,7 @@ trade_count = 0
 
 # Configuration
 EXPORT_TO_CSV = False  # Set to False to disable CSV exports
+SHOWDF = False  # Set to True to display dataframe information in console
 CSV_OUTPUT_DIR = "data_exports"  # Directory to store CSV files
 
 # Default lot size
@@ -126,32 +127,34 @@ def test_endpoint():
                     normalized_df = add_difference_columns(normalized_df)
                     
                     # Display complete normalized dataframe information AFTER all processing
-                    print("\n----- COMPLETE NORMALIZED DATAFRAME -----")
-                    print(f"Shape: {normalized_df.shape}")  # Shows number of rows and columns
-                    print(f"Columns: {normalized_df.columns.tolist()}")
-                    print("\nFirst few rows:")
-                    pd.set_option('display.max_columns', None)  # Show all columns
-                    pd.set_option('display.width', 1000)        # Wider display
-                    print(normalized_df.head())
-                    print("\n------------------------------")
+                    if SHOWDF:
+                        print("\n----- COMPLETE NORMALIZED DATAFRAME -----")
+                        print(f"Shape: {normalized_df.shape}")  # Shows number of rows and columns
+                        print(f"Columns: {normalized_df.columns.tolist()}")
+                        print("\nFirst few rows:")
+                        pd.set_option('display.max_columns', None)  # Show all columns
+                        pd.set_option('display.width', 1000)        # Wider display
+                        print(normalized_df.head())
+                        print("\n------------------------------")
                     
                     # Export normalized dataframe to CSV
-                    export_df_to_csv(normalized_df, "normalized_data", symbol)
+                    export_df_to_csv(normalized_df, "normalized_data", symbol, export_to_csv=EXPORT_TO_CSV)
                     
                     # Get frequency-based price levels from raw data
                     price_levels_df = identify_price_levels(timeframes_data, normalized_df)
                     
                     # Display price levels
-                    print("\n----- PRICE LEVELS BASED ON FREQUENCY -----")
-                    print(f"Shape: {price_levels_df.shape}")
-                    print("Columns: timeframe, price_level, normalized_price, frequency, strength")
-                    print("\nPrice Levels:")
-                    print(price_levels_df)
-                    print("\n------------------------------")
+                    if SHOWDF:
+                        print("\n----- PRICE LEVELS BASED ON FREQUENCY -----")
+                        print(f"Shape: {price_levels_df.shape}")
+                        print("Columns: timeframe, price_level, normalized_price, frequency, strength")
+                        print("\nPrice Levels:")
+                        print(price_levels_df)
+                        print("\n------------------------------")
                     
                     # Export price levels to CSV
                     price_levels_df = price_levels_df[['timeframe', 'price_level', 'normalized_price', 'frequency', 'strength']]
-                    export_df_to_csv(price_levels_df, "price_levels", symbol)
+                    export_df_to_csv(price_levels_df, "price_levels", symbol, export_to_csv=EXPORT_TO_CSV)
                     
                     # Finally, determine trading instruction
                     # This is a simplified placeholder - replace with your actual logic
