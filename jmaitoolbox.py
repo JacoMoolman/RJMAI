@@ -34,8 +34,9 @@ def normalize_data(timeframes_data, timeframe_map):
             # Pandas weekday is 0=Monday, so we need to adjust to make Sunday=0
             raw_day_of_week = (df['time'].dt.weekday + 1) % 7
             
-            # Normalize day of week between 0 and 1
-            df['day_of_week'] = (raw_day_of_week / 6.0).round(6)  # Divide by (7-1) to normalize
+            # Apply sin/cos transformation for cyclical day of week feature
+            df['dow_sin'] = np.sin(2 * np.pi * raw_day_of_week / 7).round(6)
+            df['dow_cos'] = np.cos(2 * np.pi * raw_day_of_week / 7).round(6)
             
             # Extract time components (remove seconds, split hour and minute)
             df['hour'] = df['time'].dt.hour
@@ -50,8 +51,9 @@ def normalize_data(timeframes_data, timeframe_map):
             # Drop the raw hour and minute columns
             df = df.drop(['hour', 'minute'], axis=1)
             
-            # Replace day-of-month with day-of-year normalization
-            df['day_of_year'] = (df['time'].dt.dayofyear / 365.0).round(6)
+            # Apply sin/cos transformation for cyclical day of year feature
+            df['doy_sin'] = np.sin(2 * np.pi * df['time'].dt.dayofyear / 365).round(6)
+            df['doy_cos'] = np.cos(2 * np.pi * df['time'].dt.dayofyear / 365).round(6)
             
             # Convert all numeric columns to float to avoid type issues
             for col in df.columns:
