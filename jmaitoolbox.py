@@ -146,14 +146,30 @@ def normalize_data(timeframes_data, timeframe_map):
         # Drop the original time column and spread column
         df = df.drop(['time', 'spread'], axis=1)
         
-        # Add the timeframe column and convert to numerical
-        df['timeframe'] = timeframe
-        df['timeframe'] = df['timeframe'].map(timeframe_map).round(6)
+        # Add one-hot encoded columns for timeframe
+        for tf in timeframe_map.keys():
+            df[f'is_{tf}'] = 0.0
+        df[f'is_{timeframe}'] = 1.0
         
         # Add to list for concatenation
         dfs_list.append(df)
     
     return dfs_list
+
+def get_timeframe_from_onehot(row):
+    """
+    Get the timeframe name from one-hot encoded columns.
+    
+    Args:
+        row: DataFrame row with one-hot encoded timeframe columns
+        
+    Returns:
+        str: Timeframe name
+    """
+    for col in row.index:
+        if col.startswith('is_') and row[col] == 1.0:
+            return col.replace('is_', '')
+    return None
 
 def cluster_price_levels_with_strength(price_points, threshold, touch_counts):
     """
@@ -341,6 +357,27 @@ def identify_price_levels(timeframes_data, normalized_df=None):
     # Reset index to have a continuous index across all timeframes
     all_timeframe_levels = all_timeframe_levels.reset_index(drop=True)
     
+    # Check if we're using one-hot encoding in normalized_df
+    if normalized_df is not None and any(col.startswith('is_') for col in normalized_df.columns):
+        # Create a mapping of timeframes to one-hot encoded columns
+        timeframe_to_onehot = {}
+        for col in normalized_df.columns:
+            if col.startswith('is_'):
+                tf = col.replace('is_', '')
+                timeframe_to_onehot[tf] = col
+        
+        # For each unique timeframe in all_timeframes_df
+        for tf in all_timeframe_levels['timeframe'].unique():
+            if tf in timeframe_to_onehot:
+                # Add the one-hot encoded columns, initialized to 0
+                for onehot_col in timeframe_to_onehot.values():
+                    if onehot_col not in all_timeframe_levels.columns:
+                        all_timeframe_levels[onehot_col] = 0.0
+                
+                # Set the appropriate one-hot column to 1 for rows with this timeframe
+                mask = all_timeframe_levels['timeframe'] == tf
+                all_timeframe_levels.loc[mask, timeframe_to_onehot[tf]] = 1.0
+    
     return all_timeframe_levels
 
 def calculate_sl_tp(normalized_df, action, current_price, ai_normalized_sl, ai_normalized_tp):
@@ -363,15 +400,22 @@ def calculate_sl_tp(normalized_df, action, current_price, ai_normalized_sl, ai_n
     
     # Convert normalized SL/TP back to actual price values
     # First, find the actual price range in the current symbol
-    price_data = normalized_df[['timeframe', 'open', 'high', 'low', 'close']]
+    price_data = normalized_df[['open', 'high', 'low', 'close']]
+    
+    # Add a temporary timeframe column for grouping
+    price_data['temp_timeframe'] = normalized_df.apply(get_timeframe_from_onehot, axis=1)
+    
     actual_min = float('inf')
     actual_max = float('-inf')
     
     # Find the original price range before normalization
-    for timeframe_group in price_data.groupby('timeframe'):
+    for timeframe_group in price_data.groupby('temp_timeframe'):
         tf_data = timeframe_group[1]
         actual_min = min(actual_min, tf_data['low'].min())
         actual_max = max(actual_max, tf_data['high'].max())
+    
+    # Clean up the temporary column
+    price_data = price_data.drop('temp_timeframe', axis=1)
     
     actual_range = actual_max - actual_min
     

@@ -152,8 +152,12 @@ def test_endpoint():
                         print(price_levels_df)
                         print("\n------------------------------")
                     
+                    # One-hot encoding for timeframes
+                    timeframe_dummies = pd.get_dummies(price_levels_df['timeframe'], prefix='timeframe')
+                    price_levels_df = pd.concat([price_levels_df, timeframe_dummies], axis=1)
+                    
                     # Export price levels to CSV
-                    price_levels_df = price_levels_df[['timeframe', 'price_level', 'normalized_price', 'frequency', 'strength']]
+                    # Ensure we keep the 'timeframe' column for compatibility with existing code
                     export_df_to_csv(price_levels_df, "price_levels", symbol, CSV_OUTPUT_DIR, EXPORT_TO_CSV)
                     
                     # Finally, determine trading instruction
