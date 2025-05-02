@@ -23,8 +23,8 @@ last_trade_action = None
 trade_count = 0
 
 # Configuration
-EXPORT_TO_CSV = False  # Set to False to disable CSV exports
-SHOWDF = False  # Set to True to display dataframe information in console
+EXPORT_TO_CSV = True  # Set to False to disable CSV exports
+SHOWDF = True  # Set to True to display dataframe information in console
 CSV_OUTPUT_DIR = "data_exports"  # Directory to store CSV files
 
 # Default lot size
@@ -138,7 +138,7 @@ def test_endpoint():
                         print("\n------------------------------")
                     
                     # Export normalized dataframe to CSV
-                    export_df_to_csv(normalized_df, "normalized_data", symbol, export_to_csv=EXPORT_TO_CSV)
+                    export_df_to_csv(normalized_df, "normalized_data", symbol, CSV_OUTPUT_DIR, EXPORT_TO_CSV)
                     
                     # Get frequency-based price levels from raw data
                     price_levels_df = identify_price_levels(timeframes_data, normalized_df)
@@ -154,7 +154,7 @@ def test_endpoint():
                     
                     # Export price levels to CSV
                     price_levels_df = price_levels_df[['timeframe', 'price_level', 'normalized_price', 'frequency', 'strength']]
-                    export_df_to_csv(price_levels_df, "price_levels", symbol, export_to_csv=EXPORT_TO_CSV)
+                    export_df_to_csv(price_levels_df, "price_levels", symbol, CSV_OUTPUT_DIR, EXPORT_TO_CSV)
                     
                     # Finally, determine trading instruction
                     # This is a simplified placeholder - replace with your actual logic
