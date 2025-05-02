@@ -10,7 +10,7 @@ import os
 import random
 import logging
 from datetime import datetime
-from jmaitoolbox import normalize_data, cluster_price_levels_with_strength, export_df_to_csv, identify_price_levels, calculate_sl_tp, add_difference_columns
+from jmaitoolbox import normalize_data, cluster_price_levels_with_strength, export_df_to_csv, identify_price_levels, calculate_sl_tp, add_difference_columns, create_spread_dataframe
 
 # Disable Flask logging
 log = logging.getLogger('werkzeug')
@@ -126,6 +126,27 @@ def test_endpoint():
                     # Add difference columns
                     normalized_df = add_difference_columns(normalized_df)
                     
+                    # Create spread dataframe with bid/ask prices and effective spread
+                    spread_df = create_spread_dataframe(timeframes_data)
+                    
+                    # Display spread dataframe information if enabled
+                    if SHOWDF and not spread_df.empty:
+                        print("\n----- SPREAD ANALYSIS DATAFRAME -----")
+                        print(f"Shape: {spread_df.shape}")
+                        print(f"Columns: {spread_df.columns.tolist()}")
+                        print("\nFirst few rows:")
+                        print(spread_df.head())
+                        print("\n------------------------------")
+                    
+                    # Export spread dataframe to CSV
+                    if not spread_df.empty:
+                        spread_csv_path = f"{CSV_OUTPUT_DIR}/{symbol}_spread_analysis.csv"
+                        # Format the spread with full decimal representation
+                        spread_df['spread'] = spread_df['spread'].apply(lambda x: f"{x:.6f}")
+                        spread_df.to_csv(spread_csv_path, index=False)
+                        if SHOWDF:
+                            print(f"Exported spread analysis to {spread_csv_path}")
+                    
                     # Display complete normalized dataframe information AFTER all processing
                     if SHOWDF:
                         print("\n----- COMPLETE NORMALIZED DATAFRAME -----")
@@ -138,7 +159,11 @@ def test_endpoint():
                         print("\n------------------------------")
                     
                     # Export normalized dataframe to CSV
-                    export_df_to_csv(normalized_df, "normalized_data", symbol, CSV_OUTPUT_DIR, EXPORT_TO_CSV)
+                    if not normalized_df.empty:
+                        normalized_csv_path = f"{CSV_OUTPUT_DIR}/{symbol}_normalized_data.csv"
+                        normalized_df.to_csv(normalized_csv_path, index=False)
+                        if SHOWDF:
+                            print(f"Exported normalized data to {normalized_csv_path}")
                     
                     # Get frequency-based price levels from raw data
                     price_levels_df = identify_price_levels(timeframes_data, normalized_df)
@@ -157,8 +182,11 @@ def test_endpoint():
                     price_levels_df = pd.concat([price_levels_df, timeframe_dummies], axis=1)
                     
                     # Export price levels to CSV
-                    # Ensure we keep the 'timeframe' column for compatibility with existing code
-                    export_df_to_csv(price_levels_df, "price_levels", symbol, CSV_OUTPUT_DIR, EXPORT_TO_CSV)
+                    if not price_levels_df.empty:
+                        price_levels_csv_path = f"{CSV_OUTPUT_DIR}/{symbol}_price_levels.csv"
+                        price_levels_df.to_csv(price_levels_csv_path, index=False)
+                        if SHOWDF:
+                            print(f"Exported price levels to {price_levels_csv_path}")
                     
                     # Finally, determine trading instruction
                     # This is a simplified placeholder - replace with your actual logic

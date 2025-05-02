@@ -400,10 +400,10 @@ def calculate_sl_tp(normalized_df, action, current_price, ai_normalized_sl, ai_n
     
     # Convert normalized SL/TP back to actual price values
     # First, find the actual price range in the current symbol
-    price_data = normalized_df[['open', 'high', 'low', 'close']]
+    price_data = normalized_df[['open', 'high', 'low', 'close']].copy()
     
     # Add a temporary timeframe column for grouping
-    price_data['temp_timeframe'] = normalized_df.apply(get_timeframe_from_onehot, axis=1)
+    price_data.loc[:, 'temp_timeframe'] = normalized_df.apply(get_timeframe_from_onehot, axis=1)
     
     actual_min = float('inf')
     actual_max = float('-inf')
@@ -493,3 +493,36 @@ def add_difference_columns(normalized_df):
         normalized_df.loc[in_cloud, 'cloud_position'] = 0.5
         
     return normalized_df
+
+def create_spread_dataframe(timeframes_data):
+    """
+    Create a dataframe with only current bid, ask and spread
+    
+    Args:
+        timeframes_data: Dictionary of timeframes and their corresponding bars data
+        
+    Returns:
+        DataFrame: DataFrame with only current bid, ask, and spread
+    """
+    # Get the first timeframe data only
+    first_timeframe = next(iter(timeframes_data))
+    first_bar = timeframes_data[first_timeframe][0]  # Get the most recent bar
+    
+    # Ensure bid and ask are present
+    if 'bid' in first_bar and 'ask' in first_bar:
+        # Calculate spread as the absolute difference between ask and bid
+        effective_spread = round(abs(float(first_bar['ask']) - float(first_bar['bid'])), 6)
+        
+        # Create a single record with ONLY the requested data
+        data = {
+            'bid': [float(first_bar['bid'])],
+            'ask': [float(first_bar['ask'])],
+            'spread': [effective_spread]
+        }
+        
+        # Create dataframe from the data
+        spread_df = pd.DataFrame(data)
+        return spread_df
+    else:
+        # Return empty dataframe with only the requested columns
+        return pd.DataFrame(columns=['bid', 'ask', 'spread'])

@@ -295,7 +295,10 @@ string SendDataAndGetInstruction()
                json_payload += "\"low\": " + DoubleToString(rates[j].low, 6) + ",";
                json_payload += "\"close\": " + DoubleToString(rates[j].close, 6) + ",";
                json_payload += "\"volume\": " + IntegerToString(rates[j].tick_volume) + ",";
-               json_payload += "\"spread\": " + IntegerToString(rates[j].spread);
+               json_payload += "\"spread\": " + IntegerToString(rates[j].spread) + ",";
+               // Add current bid and ask prices
+               json_payload += "\"bid\": " + DoubleToString(SymbolInfoDouble(Symbol(), SYMBOL_BID), 6) + ",";
+               json_payload += "\"ask\": " + DoubleToString(SymbolInfoDouble(Symbol(), SYMBOL_ASK), 6);
                
                // Add technical indicators if available
                if (ma20_valid) { json_payload += ",\"ma20\": " + DoubleToString(ma20_buffer[j], 6); }
