@@ -146,6 +146,10 @@ def normalize_data(timeframes_data, timeframe_map):
         # Drop the original time column and spread column
         df = df.drop(['time', 'spread'], axis=1)
         
+        # Also drop bid and ask columns if they exist
+        columns_to_drop = ['bid', 'ask']
+        df = df.drop([col for col in columns_to_drop if col in df.columns], axis=1)
+        
         # Add one-hot encoded columns for timeframe
         for tf in timeframe_map.keys():
             df[f'is_{tf}'] = 0.0
