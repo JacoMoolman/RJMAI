@@ -4,8 +4,8 @@ import os
 
 # Get the current directory and file paths
 current_dir = os.path.dirname(os.path.abspath(__file__))
-normalized_data_path = os.path.join(current_dir, 'GBPUSD_normalized_data.csv')
-price_levels_path = os.path.join(current_dir, 'GBPUSD_price_levels.csv')
+normalized_data_path = os.path.join(current_dir, 'EURUSD_normalized_data.csv')
+price_levels_path = os.path.join(current_dir, 'EURUSD_price_levels.csv')
 
 # Read the CSV files
 try:

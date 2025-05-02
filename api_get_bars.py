@@ -177,11 +177,7 @@ def test_endpoint():
                         print(price_levels_df)
                         print("\n------------------------------")
                     
-                    # One-hot encoding for timeframes
-                    timeframe_dummies = pd.get_dummies(price_levels_df['timeframe'], prefix='timeframe')
-                    price_levels_df = pd.concat([price_levels_df, timeframe_dummies], axis=1)
-                    
-                    # Export price levels to CSV
+                    # Export price levels to CSV - no need for one-hot encoding anymore as it's handled in jmaitoolbox.py
                     if not price_levels_df.empty:
                         price_levels_csv_path = f"{CSV_OUTPUT_DIR}/{symbol}_price_levels.csv"
                         price_levels_df.to_csv(price_levels_csv_path, index=False)

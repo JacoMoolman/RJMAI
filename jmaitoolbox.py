@@ -307,6 +307,7 @@ def identify_price_levels(timeframes_data, normalized_df=None):
     all_timeframe_levels = pd.DataFrame()
     
     # Process each timeframe separately
+    timeframe_list = list(timeframes_data.keys())
     for timeframe, bars in timeframes_data.items():
         # Extract close prices from this timeframe
         timeframe_prices = [round(float(bar['close']), precision) for bar in bars]
@@ -345,14 +346,18 @@ def identify_price_levels(timeframes_data, normalized_df=None):
         # Add normalized price values using EXACTLY the same min/max as the main dataframe
         price_levels['normalized_price'] = ((price_levels['price_level'] - min_price) / price_range).round(6)
         
-        # Add timeframe column
-        price_levels['timeframe'] = timeframe
+        # Create and initialize one-hot encoded columns for all timeframes
+        for tf in timeframe_list:
+            price_levels[f'is_{tf}'] = 0.0
+        
+        # Set the appropriate column to 1 for the current timeframe
+        price_levels[f'is_{timeframe}'] = 1.0
         
         # Append to the all timeframes DataFrame
         all_timeframe_levels = pd.concat([all_timeframe_levels, price_levels])
     
     # Reorder columns for better readability
-    all_timeframe_levels = all_timeframe_levels[['timeframe', 'price_level', 'normalized_price', 'frequency', 'strength']]
+    all_timeframe_levels = all_timeframe_levels[['price_level', 'normalized_price', 'frequency', 'strength'] + [f'is_{tf}' for tf in timeframe_list]]
     
     # Reset index to have a continuous index across all timeframes
     all_timeframe_levels = all_timeframe_levels.reset_index(drop=True)
@@ -367,16 +372,17 @@ def identify_price_levels(timeframes_data, normalized_df=None):
                 timeframe_to_onehot[tf] = col
         
         # For each unique timeframe in all_timeframes_df
-        for tf in all_timeframe_levels['timeframe'].unique():
-            if tf in timeframe_to_onehot:
-                # Add the one-hot encoded columns, initialized to 0
-                for onehot_col in timeframe_to_onehot.values():
-                    if onehot_col not in all_timeframe_levels.columns:
-                        all_timeframe_levels[onehot_col] = 0.0
+        for tf in all_timeframe_levels.columns:
+            if tf.startswith('is_'):
+                if tf not in timeframe_to_onehot.values():
+                    # Add the one-hot encoded columns, initialized to 0
+                    for onehot_col in timeframe_to_onehot.values():
+                        if onehot_col not in all_timeframe_levels.columns:
+                            all_timeframe_levels[onehot_col] = 0.0
                 
                 # Set the appropriate one-hot column to 1 for rows with this timeframe
-                mask = all_timeframe_levels['timeframe'] == tf
-                all_timeframe_levels.loc[mask, timeframe_to_onehot[tf]] = 1.0
+                mask = all_timeframe_levels[tf] == 1.0
+                all_timeframe_levels.loc[mask, tf] = 1.0
     
     return all_timeframe_levels
 
