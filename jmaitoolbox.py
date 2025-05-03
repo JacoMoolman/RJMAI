@@ -343,9 +343,9 @@ def identify_price_levels(timeframes_data, normalized_df=None):
         levels_per_timeframe = 10
         price_levels = price_levels.head(levels_per_timeframe).reset_index(drop=True)
         
-        # Calculate normalized frequency
+        # Normalize frequency
         max_freq = price_levels['frequency'].max() if not price_levels.empty else 1
-        price_levels['strength'] = (price_levels['frequency'] / max_freq).round(6)
+        price_levels['frequency'] = (price_levels['frequency'] / max_freq).round(6)
         
         # Add normalized price values using EXACTLY the same min/max as the main dataframe
         price_levels['normalized_price'] = ((price_levels['price_level'] - min_price) / price_range).round(6)
@@ -361,7 +361,7 @@ def identify_price_levels(timeframes_data, normalized_df=None):
         all_timeframe_levels = pd.concat([all_timeframe_levels, price_levels])
     
     # Reorder columns for better readability
-    all_timeframe_levels = all_timeframe_levels[['price_level', 'normalized_price', 'frequency', 'strength'] + [f'is_{tf}' for tf in timeframe_list]]
+    all_timeframe_levels = all_timeframe_levels[['price_level', 'normalized_price', 'frequency'] + [f'is_{tf}' for tf in timeframe_list]]
     
     # Reset index to have a continuous index across all timeframes
     all_timeframe_levels = all_timeframe_levels.reset_index(drop=True)
