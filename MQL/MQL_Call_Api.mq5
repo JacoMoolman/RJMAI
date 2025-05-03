@@ -32,6 +32,8 @@ input int    InpStochKPeriod = 5;      // Stochastic K Period
 input int    InpStochDPeriod = 3;      // Stochastic D Period
 input int    InpStochSlowing = 3;      // Stochastic Slowing
 input int    InpADXPeriod    = 14;     // ADX Period
+input int    InpATR14Period  = 14;     // ATR 14 Period
+input int    InpATR50Period  = 50;     // ATR 50 Period
 
 //+------------------------------------------------------------------+
 //| DLL Imports                                                      |
@@ -237,6 +239,8 @@ string SendDataAndGetInstruction()
             double adx_buffer[];
             double plus_di_buffer[];
             double minus_di_buffer[];
+            double atr14_buffer[];
+            double atr50_buffer[];
             
             // Get indicator handles
             int ma20_handle = iMA(symbol_name, current_tf, InpMA20Period, 0, MODE_SMA, PRICE_CLOSE);
@@ -247,6 +251,8 @@ string SendDataAndGetInstruction()
             int stoch_handle = iStochastic(symbol_name, current_tf, InpStochKPeriod, InpStochDPeriod, InpStochSlowing, MODE_SMA, STO_LOWHIGH);
             int macd_handle = iMACD(symbol_name, current_tf, InpMACDFast, InpMACDSlow, InpMACDSignal, PRICE_CLOSE);
             int adx_handle = iADX(symbol_name, current_tf, InpADXPeriod);
+            int atr14_handle = iATR(symbol_name, current_tf, InpATR14Period);
+            int atr50_handle = iATR(symbol_name, current_tf, InpATR50Period);
             
             // Set up arrays properly
             ArraySetAsSeries(ma20_buffer, true);
@@ -264,6 +270,8 @@ string SendDataAndGetInstruction()
             ArraySetAsSeries(adx_buffer, true);
             ArraySetAsSeries(plus_di_buffer, true);
             ArraySetAsSeries(minus_di_buffer, true);
+            ArraySetAsSeries(atr14_buffer, true);
+            ArraySetAsSeries(atr50_buffer, true);
             
             // Fetch indicator values
             bool ma20_valid = CopyBuffer(ma20_handle, 0, 0, copied_count, ma20_buffer) == copied_count;
@@ -281,6 +289,8 @@ string SendDataAndGetInstruction()
             bool adx_valid = CopyBuffer(adx_handle, 0, 0, copied_count, adx_buffer) == copied_count;
             bool plus_di_valid = CopyBuffer(adx_handle, 1, 0, copied_count, plus_di_buffer) == copied_count;
             bool minus_di_valid = CopyBuffer(adx_handle, 2, 0, copied_count, minus_di_buffer) == copied_count;
+            bool atr14_valid = CopyBuffer(atr14_handle, 0, 0, copied_count, atr14_buffer) == copied_count;
+            bool atr50_valid = CopyBuffer(atr50_handle, 0, 0, copied_count, atr50_buffer) == copied_count;
             
             // Build JSON array for this timeframe
             for (int j = 0; j < copied_count; j++)
@@ -321,6 +331,20 @@ string SendDataAndGetInstruction()
                if (adx_valid) { json_payload += ",\"adx\": " + DoubleToString(adx_buffer[j], 2); }
                if (plus_di_valid) { json_payload += ",\"plus_di\": " + DoubleToString(plus_di_buffer[j], 2); }
                if (minus_di_valid) { json_payload += ",\"minus_di\": " + DoubleToString(minus_di_buffer[j], 2); }
+
+               // Add ATR values
+               if (atr14_valid) { 
+                  json_payload += ",\"atr14\": " + DoubleToString(atr14_buffer[j], 6);
+                  // Calculate ATR as percentage of price
+                  double atr14_percent = 100.0 * atr14_buffer[j] / rates[j].close;
+                  json_payload += ",\"atr14_pct\": " + DoubleToString(atr14_percent, 2);
+               }
+               if (atr50_valid) { 
+                  json_payload += ",\"atr50\": " + DoubleToString(atr50_buffer[j], 6);
+                  // Calculate ATR as percentage of price
+                  double atr50_percent = 100.0 * atr50_buffer[j] / rates[j].close;
+                  json_payload += ",\"atr50_pct\": " + DoubleToString(atr50_percent, 2);
+               }
                
                json_payload += "}";
             }
@@ -336,6 +360,8 @@ string SendDataAndGetInstruction()
             if (stoch_handle != INVALID_HANDLE) IndicatorRelease(stoch_handle);
             if (macd_handle != INVALID_HANDLE) IndicatorRelease(macd_handle);
             if (adx_handle != INVALID_HANDLE) IndicatorRelease(adx_handle);
+            if (atr14_handle != INVALID_HANDLE) IndicatorRelease(atr14_handle);
+            if (atr50_handle != INVALID_HANDLE) IndicatorRelease(atr50_handle);
          }
          else
          {

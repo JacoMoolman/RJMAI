@@ -152,6 +152,14 @@ def test_endpoint():
                         print("\n----- COMPLETE NORMALIZED DATAFRAME -----")
                         print(f"Shape: {normalized_df.shape}")  # Shows number of rows and columns
                         print(f"Columns: {normalized_df.columns.tolist()}")
+                        
+                        # Check for ATR indicators and highlight them if present
+                        atr_columns = [col for col in normalized_df.columns if 'atr' in col.lower()]
+                        if atr_columns:
+                            print("\nATR Indicators present in dataframe:")
+                            for col in atr_columns:
+                                print(f"- {col}")
+                        
                         print("\nFirst few rows:")
                         pd.set_option('display.max_columns', None)  # Show all columns
                         pd.set_option('display.width', 1000)        # Wider display
@@ -168,11 +176,15 @@ def test_endpoint():
                     # Get frequency-based price levels from raw data
                     price_levels_df = identify_price_levels(timeframes_data, normalized_df)
                     
+                    # Drop the price_level column from the display and export
+                    if not price_levels_df.empty and 'price_level' in price_levels_df.columns:
+                        price_levels_df = price_levels_df.drop('price_level', axis=1)
+                    
                     # Display price levels
                     if SHOWDF:
                         print("\n----- PRICE LEVELS BASED ON FREQUENCY -----")
                         print(f"Shape: {price_levels_df.shape}")
-                        print("Columns: timeframe, price_level, normalized_price, frequency, strength")
+                        print("Columns: timeframe, normalized_price, frequency, strength")
                         print("\nPrice Levels:")
                         print(price_levels_df)
                         print("\n------------------------------")

@@ -81,7 +81,8 @@ def normalize_data(timeframes_data, timeframe_map):
         'stochastic': ['stoch_k', 'stoch_d'],
         'macd': ['macd_main', 'macd_signal', 'macd_hist'],
         'directional': ['adx', 'plus_di', 'minus_di'],
-        'ichimoku': ['ichimoku_tenkan', 'ichimoku_kijun', 'ichimoku_senkou_a', 'ichimoku_senkou_b']
+        'ichimoku': ['ichimoku_tenkan', 'ichimoku_kijun', 'ichimoku_senkou_a', 'ichimoku_senkou_b'],
+        'atr': ['atr14', 'atr50']
     }
     
     # Create dictionaries to store global min/max for each indicator
@@ -142,6 +143,16 @@ def normalize_data(timeframes_data, timeframe_map):
         # Handle RSI separately as it already has a natural 0-100 range
         if 'rsi' in df.columns:
             df['rsi'] = (df['rsi'] / 100.0).round(6)
+            
+        # Handle ATR percentage values (already in percentage format from MQL)
+        if 'atr14_pct' in df.columns:
+            # Already in percentage format, normalize to 0-1 range
+            # ATR percentage values typically range from 0-5%, but can go higher
+            # Cap at 10% to avoid extreme values distorting the normalization
+            df['atr14_pct'] = (df['atr14_pct'] / 10.0).clip(0, 1).round(6)
+            
+        if 'atr50_pct' in df.columns:
+            df['atr50_pct'] = (df['atr50_pct'] / 10.0).clip(0, 1).round(6)
         
         # Drop the original time column and spread column
         df = df.drop(['time', 'spread'], axis=1)
