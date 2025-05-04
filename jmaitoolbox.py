@@ -476,6 +476,7 @@ def add_difference_columns(normalized_df):
     # Add indicator crossovers and differences (where applicable)
     if all(col in normalized_df.columns for col in ['ma20', 'ma50']):
         normalized_df['ma20_50_diff'] = (normalized_df['ma20'] - normalized_df['ma50']).round(6)
+        normalized_df['trend'] = (normalized_df['ma20'] - normalized_df['ma50']).round(6)  # Positive = bullish, negative = bearish
         
     if all(col in normalized_df.columns for col in ['ma50', 'ma100']):
         normalized_df['ma50_100_diff'] = (normalized_df['ma50'] - normalized_df['ma100']).round(6)
