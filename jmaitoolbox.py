@@ -514,6 +514,12 @@ def add_difference_columns(normalized_df):
         
         normalized_df.loc[in_cloud, 'cloud_position'] = 0.5
         
+    # Calculate ADX change and normalize it
+    if 'adx' in normalized_df.columns:
+        normalized_df['adx_change'] = normalized_df['adx'].diff().round(6)
+        # Normalize ADX change to 0-1 range
+        normalized_df['adx_change'] = (normalized_df['adx_change'] - normalized_df['adx_change'].min()) / (normalized_df['adx_change'].max() - normalized_df['adx_change'].min() + 1e-6)
+        
     return normalized_df
 
 def create_spread_dataframe(timeframes_data):
