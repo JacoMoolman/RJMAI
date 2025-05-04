@@ -153,13 +153,6 @@ def test_endpoint():
                         print(f"Shape: {normalized_df.shape}")  # Shows number of rows and columns
                         print(f"Columns: {normalized_df.columns.tolist()}")
                         
-                        # Check for ATR indicators and highlight them if present
-                        atr_columns = [col for col in normalized_df.columns if 'atr' in col.lower()]
-                        if atr_columns:
-                            print("\nATR Indicators present in dataframe:")
-                            for col in atr_columns:
-                                print(f"- {col}")
-                        
                         print("\nFirst few rows:")
                         pd.set_option('display.max_columns', None)  # Show all columns
                         pd.set_option('display.width', 1000)        # Wider display
