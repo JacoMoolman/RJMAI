@@ -10,7 +10,7 @@ import os
 import random
 import logging
 from datetime import datetime
-from jmaitoolbox import normalize_data, cluster_price_levels_with_strength, export_df_to_csv, identify_price_levels, calculate_sl_tp, add_difference_columns, create_spread_dataframe
+from jmaitoolbox import normalize_data, cluster_price_levels_with_strength, export_df_to_csv, identify_price_levels, calculate_sl_tp, add_difference_columns, create_spread_dataframe, add_lagged_features
 
 # Disable Flask logging
 log = logging.getLogger('werkzeug')
@@ -125,6 +125,9 @@ def test_endpoint():
                     
                     # Add difference columns
                     normalized_df = add_difference_columns(normalized_df)
+                    
+                    # Add lagged features
+                    normalized_df = add_lagged_features(normalized_df)
                     
                     # Create spread dataframe with bid/ask prices and effective spread
                     spread_df = create_spread_dataframe(timeframes_data)

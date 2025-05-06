@@ -554,3 +554,34 @@ def create_spread_dataframe(timeframes_data):
     else:
         # Return empty dataframe with only the requested columns
         return pd.DataFrame(columns=['bid', 'ask', 'spread'])
+
+def add_lagged_features(normalized_df):
+    """
+    Add lagged values of key indicators to capture short-term trends.
+    
+    Args:
+        normalized_df: DataFrame with normalized market data
+        
+    Returns:
+        DataFrame: The input DataFrame with added lagged features
+    """
+    # Core price and volume columns
+    lag_columns = ['open', 'high', 'low', 'close']
+    if 'volume' in normalized_df.columns:
+        lag_columns.append('volume')
+    
+    # Add technical indicators if they exist
+    for col in normalized_df.columns:
+        if col.startswith('rsi') or col.startswith('macd') or col.startswith('adx') or col.startswith('stoch'):
+            lag_columns.append(col)
+    
+    # Create lagged features
+    for col in lag_columns:
+        for lag in [1, 3, 5]:
+            lag_col_name = f'{col}_lag{lag}'
+            normalized_df[lag_col_name] = normalized_df[col].shift(lag)
+    
+    # Fill NaN values with 0
+    normalized_df = normalized_df.fillna(0)
+    
+    return normalized_df
