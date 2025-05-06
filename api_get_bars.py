@@ -173,11 +173,25 @@ def test_endpoint():
                     if not price_levels_df.empty and 'price_level' in price_levels_df.columns:
                         price_levels_df = price_levels_df.drop('price_level', axis=1)
                     
+                    # Add distance to nearest price levels using M1 close price
+                    if not price_levels_df.empty and not normalized_df.empty:
+                        # Get the latest M1 close price
+                        m1_data = normalized_df[normalized_df['is_M1'] == 1.0]
+                        if not m1_data.empty:
+                            latest_m1_close = m1_data['close'].iloc[-1]
+                            
+                            # Calculate distance to each price level
+                            price_levels_df['distance'] = (price_levels_df['normalized_price'] - latest_m1_close).abs().round(6)
+                            
+                            # Add 'direction' column (1 for resistance, 0 for support)
+                            price_levels_df['is_resistance'] = 0
+                            price_levels_df.loc[price_levels_df['normalized_price'] > latest_m1_close, 'is_resistance'] = 1
+                            
                     # Display price levels
                     if SHOWDF:
                         print("\n----- PRICE LEVELS BASED ON FREQUENCY -----")
                         print(f"Shape: {price_levels_df.shape}")
-                        print("Columns: timeframe, normalized_price, frequency, strength")
+                        print("Columns: timeframe, normalized_price, frequency, strength, distance, is_resistance")
                         print("\nPrice Levels:")
                         print(price_levels_df)
                         print("\n------------------------------")
