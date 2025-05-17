@@ -128,7 +128,11 @@ def normalize_data(timeframes_data, timeframe_map):
         # Normalize price columns using global min/max
         price_columns = ['open', 'high', 'low', 'close']
         for col in price_columns:
-            df[col] = ((df[col] - global_min_price) / global_price_range).round(6)
+            try:
+                df[col] = ((df[col] - global_min_price) / global_price_range).round(6)
+            except ZeroDivisionError:
+                # Handle case where all prices are identical (flat market)
+                df[col] = 0.0
         
         # Normalize volume using global min/max if it exists
         if 'volume' in df.columns and global_min_vol is not None and global_max_vol > global_min_vol:

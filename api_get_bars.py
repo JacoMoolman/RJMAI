@@ -23,7 +23,7 @@ last_trade_action = None
 trade_count = 0
 
 # Configuration
-EXPORT_TO_CSV = True  # Set to False to disable CSV exports
+EXPORT_TO_CSV = False  # Set to False to disable CSV exports
 SHOWDF = True  # Set to True to display dataframe information in console
 CSV_OUTPUT_DIR = "data_exports"  # Directory to store CSV files
 
