@@ -4,7 +4,7 @@ import json
 
 # Set up the OpenAI client with direct API key
 client = OpenAI(
-    api_key="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",
+    api_key="YOUR_API_KEY_HERE",
 )
 
 def deep_research(query, max_completion_tokens=4000):
