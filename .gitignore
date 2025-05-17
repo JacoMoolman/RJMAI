@@ -40,6 +40,9 @@ ENV/
 # Environment variables
 .env
 
+# API Keys
+LLM-JMAI/gpt3_deep_research.py
+
 # Operating System
 .DS_Store
 Thumbs.db
