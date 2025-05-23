@@ -172,6 +172,13 @@ def test_endpoint():
                     # Get frequency-based price levels from raw data
                     price_levels_df = identify_price_levels(timeframes_data, normalized_df)
                     
+                    # Rename columns from is_M1 to freq_is_M1, etc.
+                    rename_dict = {}
+                    for col in price_levels_df.columns:
+                        if col.startswith('is_'):
+                            rename_dict[col] = f'freq_{col}'
+                    price_levels_df = price_levels_df.rename(columns=rename_dict)
+                    
                     # Drop the price_level column from the display and export
                     if not price_levels_df.empty and 'price_level' in price_levels_df.columns:
                         price_levels_df = price_levels_df.drop('price_level', axis=1)
